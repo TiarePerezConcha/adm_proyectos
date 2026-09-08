@@ -68,7 +68,7 @@ export function loadAppState(): AppState {
         designSystems: parsed.designSystems || [SEED_DESIGN_SYSTEM],
         seoKeywords: parsed.seoKeywords || SEED_SEO_KEYWORDS,
         calendarBookings: parsed.calendarBookings || SEED_CALENDAR,
-        monitoredProjects: parsed.monitoredProjects || SEED_MONITORED_PROJECTS,
+        monitoredProjects: parsed.monitoredProjects && parsed.monitoredProjects.length >= SEED_MONITORED_PROJECTS.length ? parsed.monitoredProjects : SEED_MONITORED_PROJECTS,
         securityAssets: parsed.securityAssets || SEED_SECURITY_ASSETS,
         securityRisks: parsed.securityRisks || SEED_SECURITY_RISKS,
         securityPlaybooks: parsed.securityPlaybooks || SEED_SECURITY_PLAYBOOKS,
