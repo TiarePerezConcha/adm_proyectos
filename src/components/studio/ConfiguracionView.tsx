@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Settings, Key, Database, Download, Upload, Check, RefreshCw, Shield, Sparkles, DollarSign } from 'lucide-react';
 import { AppState, saveAppState, exportAppStateToJSON, importAppStateFromJSON } from '../../utils/storage';
-import { AppSettings } from '../../types';
+import { AppSettings, UserProfileSecurity } from '../../types';
+import { SecuritySettingsSection } from './SecuritySettingsSection';
 
 interface ConfiguracionViewProps {
   state: AppState;
@@ -58,12 +59,24 @@ export const ConfiguracionView: React.FC<ConfiguracionViewProps> = ({ state, onU
       <div>
         <h1 className="text-2xl font-bold font-serif text-slate-900 tracking-tight flex items-center gap-2">
           <Settings className="w-6 h-6 text-slate-700" />
-          Configuración & APIs Multi-IA
+          <span>Configuración, APIs & Seguridad</span>
         </h1>
-        <p className="text-xs text-slate-500 mt-1">
-          Gestiona las claves de inteligencia artificial para maximizar tokens, parámetros de costos y respaldos.
+        <p className="text-slate-500 text-xs mt-1">
+          Gestiona tu perfil, contraseñas, doble factor (2FA), claves de modelos de Inteligencia Artificial y sincronización Supabase.
         </p>
       </div>
+
+      {/* Sección 1: Seguridad, Perfil y 2FA (Google Authenticator) */}
+      <SecuritySettingsSection
+        security={settings.userSecurity}
+        onUpdateSecurity={(newSecurity) => {
+          const updatedSettings = { ...settings, userSecurity: newSecurity };
+          setSettings(updatedSettings);
+          const newState = { ...state, settings: updatedSettings };
+          onUpdateState(newState);
+          saveAppState(newState);
+        }}
+      />
 
       {savedSuccess && (
         <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold flex items-center gap-2 animate-fadeIn">

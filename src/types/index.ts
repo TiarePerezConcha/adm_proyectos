@@ -337,6 +337,17 @@ export interface SecurityPlaybook {
   steps: { order: number; action: string; commandOrLink?: string }[];
 }
 
+export interface UserProfileSecurity {
+  email: string;
+  passwordHash?: string;
+  hasCustomPassword: boolean;
+  masterPin: string;
+  twoFactorEnabled: boolean;
+  twoFactorSecret?: string;
+  backupCodes: string[];
+  lastLogin?: string;
+}
+
 export interface AppSettings {
   deepseekApiKey: string;
   geminiApiKey: string;
@@ -350,4 +361,6 @@ export interface AppSettings {
   nicChileCostCLP: number;
   tecnoInverCostCLP: number;
   telemetryEndpoint: string;
+  userSecurity?: UserProfileSecurity;
 }
+
