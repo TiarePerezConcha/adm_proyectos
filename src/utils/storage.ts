@@ -33,7 +33,7 @@ import {
   SEED_SECURITY_PLAYBOOKS,
 } from '../data/seedData';
 
-const STORAGE_KEY = 'lsc_admin_studio_v2_real';
+const STORAGE_KEY = 'lsc_admin_studio_v3_live';
 
 export interface AppState {
   settings: AppSettings;
