@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Calendar, Video, Clock, User, Phone, Mail, Plus, CheckCircle, ExternalLink } from 'lucide-react';
 import { AppState, syncDealStage, saveAppState } from '../../utils/storage';
 import { CalendarBooking } from '../../types';
+import { syncClientToSupabase, syncDealToSupabase } from '../../services/supabaseSyncService';
 
 interface GoogleCalendarViewProps {
   state: AppState;
@@ -84,6 +85,12 @@ export const GoogleCalendarView: React.FC<GoogleCalendarViewProps> = ({ state, o
     setClientName('');
     setEmail('');
     setCompany('');
+
+    // Sincronización en la nube Supabase
+    const affectedClient = newClients.find((c) => c.id === clientId);
+    if (affectedClient) syncClientToSupabase(affectedClient);
+    const affectedDeal = updatedDeals.find((d) => d.clientId === clientId);
+    if (affectedDeal) syncDealToSupabase(affectedDeal);
   };
 
   return (

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { FileSpreadsheet, Plus, Sparkles, Printer, Mail, CheckCircle2, Trash2, Edit3, Eye, ArrowLeft, Layers, Calendar, DollarSign } from 'lucide-react';
 import { AppState, syncDealStage, saveAppState } from '../../utils/storage';
-import { Quote, QuoteService, QuoteSprint } from '../../types';
+import { Quote, Client, QuoteService, QuoteSprint } from '../../types';
 import { generateWithAI } from '../../services/aiService';
+import { syncQuoteToSupabase, syncDealToSupabase } from '../../services/supabaseSyncService';
 
 interface CotizadorExpressViewProps {
   state: AppState;
@@ -205,6 +206,11 @@ export const CotizadorExpressView: React.FC<CotizadorExpressViewProps> = ({
     saveAppState(newState);
     setSelectedQuote(newQuote);
     setIsEditing(false);
+
+    // Sincronización en la nube Supabase automática
+    syncQuoteToSupabase(newQuote);
+    const affectedDeal = updatedDeals.find((d) => d.clientId === newQuote.clientId);
+    if (affectedDeal) syncDealToSupabase(affectedDeal);
   };
 
   const handleOpenNewQuote = () => {

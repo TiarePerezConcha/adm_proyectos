@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { ClipboardCheck, Sparkles, CheckCircle, ArrowRight, ArrowLeft, Building, Globe, Server, Database, ShieldAlert } from 'lucide-react';
 import { AppState, syncDealStage, saveAppState } from '../../utils/storage';
-import { ProspectEvaluation } from '../../types';
+import { ProspectEvaluation, Client, CRMDeal } from '../../types';
 import { generateWithAI } from '../../services/aiService';
+import { syncEvaluationToSupabase, syncClientToSupabase, syncDealToSupabase } from '../../services/supabaseSyncService';
 
 interface EvaluacionViewProps {
   state: AppState;
@@ -148,6 +149,13 @@ export const EvaluacionView: React.FC<EvaluacionViewProps> = ({ state, onUpdateS
     setIsCreating(false);
     setCurrentStep(1);
     setSelectedEval(newEval);
+
+    // Sincronización en la nube Supabase
+    syncEvaluationToSupabase(newEval);
+    const affectedClient = newClients.find((c) => c.id === clientId);
+    if (affectedClient) syncClientToSupabase(affectedClient);
+    const affectedDeal = updatedDeals.find((d) => d.clientId === clientId);
+    if (affectedDeal) syncDealToSupabase(affectedDeal);
   };
 
   return (
