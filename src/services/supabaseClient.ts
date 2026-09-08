@@ -1,10 +1,9 @@
 ﻿import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = 'https://cvfybrtblxzpawnxqsnd.supabase.co';
-// Llave anon pública por defecto (o personalizada si el usuario la tiene en localStorage)
-const savedKey = localStorage.getItem('lsc_supabase_key') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy';
+export const SUPABASE_URL = 'https://cvfybrtblxzpawnxqsnd.supabase.co';
+export const SUPABASE_ANON_KEY = 'sb_publishable_FaHiwWE7FIHP5-Xr7F6UQg_bJYFphXb';
 
-export const supabase = createClient(SUPABASE_URL, savedKey, {
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,

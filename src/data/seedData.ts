@@ -23,7 +23,7 @@ export const INITIAL_SETTINGS: AppSettings = {
   openrouterApiKey: '',
   preferredModel: 'auto',
   supabaseUrl: 'https://cvfybrtblxzpawnxqsnd.supabase.co',
-  supabaseAnonKey: '',
+  supabaseAnonKey: 'sb_publishable_FaHiwWE7FIHP5-Xr7F6UQg_bJYFphXb',
   supabaseKeepAliveIntervalDays: 3,
   nicChileCostCLP: 9990,
   tecnoInverCostCLP: 30000,
