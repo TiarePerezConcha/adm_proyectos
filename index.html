@@ -9,8 +9,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
-    <script type="module" crossorigin src="./assets/index-C28LVWyr.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-D6ZxoVPJ.css">
+    <script type="module" crossorigin src="./assets/index-goy-InTf.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CNDZg8XB.css">
   </head>
   <body class="bg-[#f8f9fb] text-[#1a1d24] font-sans antialiased selection:bg-[#DD8396] selection:text-white">
     <div id="root"></div>
@@ -44,24 +44,29 @@
           ssl_valid: window.location.protocol === 'https:',
           message: payload.message || (payload.type ? (payload.type + ': ' + (payload.detailMessage || '')) : '')
         });
-        if (navigator.sendBeacon) {
-          const blob = new Blob([body], { type: 'application/json' });
-          const ok = navigator.sendBeacon(config.endpoint, blob);
-          if (!ok) fallbackSend(body);
-        } else { fallbackSend(body); }
-      }
 
-      function fallbackSend(body) {
-        fetch(config.endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': config.apiKey,
-            'Authorization': 'Bearer ' + config.apiKey
-          },
-          body: body,
-          keepalive: true
-        }).catch(function () {});
+        const targetUrl = config.endpoint.includes('apikey=')
+          ? config.endpoint
+          : (config.endpoint + (config.endpoint.includes('?') ? '&' : '?') + 'apikey=' + config.apiKey);
+
+        if (window.fetch) {
+          fetch(targetUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': config.apiKey,
+              'Authorization': 'Bearer ' + config.apiKey
+            },
+            body: body,
+            keepalive: true
+          }).catch(function () {
+            if (navigator.sendBeacon) {
+              navigator.sendBeacon(targetUrl, new Blob([body], { type: 'application/json' }));
+            }
+          });
+        } else if (navigator.sendBeacon) {
+          navigator.sendBeacon(targetUrl, new Blob([body], { type: 'application/json' }));
+        }
       }
 
       window.addEventListener('load', function () {
