@@ -1,21 +1,150 @@
-import React, { useState } from 'react';
-import { Activity, Shield, Database, CheckCircle2, AlertTriangle, XCircle, Copy, Check, RefreshCw, Plus, Globe } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Activity, Shield, Database, CheckCircle2, AlertTriangle, XCircle, Copy, Check, RefreshCw, Plus, Globe, Sparkles } from 'lucide-react';
 import { AppState, saveAppState } from '../../utils/storage';
 import { MonitoredProject } from '../../types';
+import { supabase } from '../../services/supabaseClient';
 
 interface ProjectMonitorViewProps {
   state: AppState;
   onUpdateState: (newState: AppState) => void;
 }
 
+function formatRelativeTime(isoString: string): string {
+  try {
+    const diffMs = Date.now() - new Date(isoString).getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    if (diffSec < 60) return 'Hace unos segundos (En vivo)';
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `Hace ${diffMin} min (En vivo)`;
+    const diffHours = Math.floor(diffMin / 60);
+    if (diffHours < 24) return `Hace ${diffHours} h`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `Hace ${diffDays} días`;
+  } catch {
+    return 'Recién conectado';
+  }
+}
+
 export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, onUpdateState }) => {
   const [copiedSnippet, setCopiedSnippet] = useState(false);
   const [pingingSupabase, setPingingSupabase] = useState(false);
+  const [isSyncingTelemetry, setIsSyncingTelemetry] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string>('');
   const [showAddProject, setShowAddProject] = useState(false);
 
   const [newName, setNewName] = useState('');
   const [newClient, setNewClient] = useState('');
   const [newUrl, setNewUrl] = useState('https://');
+
+  // Sincronización bidireccional automática con Supabase telemetry_logs
+  const syncTelemetryFromSupabase = useCallback(async () => {
+    setIsSyncingTelemetry(true);
+    try {
+      const { data: logs, error } = await supabase
+        .from('telemetry_logs')
+        .select('*')
+        .order('timestamp', { ascending: false });
+
+      if (error) {
+        console.warn('Error consultando telemetry_logs:', error.message);
+        return;
+      }
+
+      if (!logs || logs.length === 0) return;
+
+      // Agrupar último ping por project_id
+      const latestLogs = new Map<string, any>();
+      for (const log of logs) {
+        const pid = (log.project_id || '').trim().toLowerCase();
+        if (pid && !latestLogs.has(pid)) {
+          latestLogs.set(pid, log);
+        }
+      }
+
+      const matchedPids = new Set<string>();
+
+      // 1. Actualizar proyectos existentes con URLs y métricas reales desde Supabase
+      const updatedList = state.monitoredProjects.map((proj) => {
+        const normId = proj.id.toLowerCase();
+        const cleanId = normId.replace(/^mon-/, '');
+
+        let matchingLog: any = null;
+        for (const [logPid, logData] of latestLogs.entries()) {
+          const cleanLogPid = logPid.replace(/^mon-/, '');
+          if (
+            normId === logPid ||
+            cleanId === cleanLogPid ||
+            cleanId.includes(cleanLogPid) ||
+            cleanLogPid.includes(cleanId) ||
+            proj.name.toLowerCase().includes(cleanLogPid)
+          ) {
+            matchingLog = logData;
+            matchedPids.add(logPid);
+            break;
+          }
+        }
+
+        if (matchingLog) {
+          const hasLogUrl = Boolean(matchingLog.url && matchingLog.url !== 'invalid-url');
+          return {
+            ...proj,
+            url: hasLogUrl ? matchingLog.url : proj.url,
+            lastHeartbeat: formatRelativeTime(matchingLog.timestamp),
+            avgResponseTimeMs: matchingLog.load_time_ms || proj.avgResponseTimeMs,
+            sslValid: matchingLog.ssl_valid !== null && matchingLog.ssl_valid !== undefined ? matchingLog.ssl_valid : proj.sslValid,
+            status: 'online' as const,
+            lastSupabasePing: `Supabase Live: ${new Date(matchingLog.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (OK)`
+          };
+        }
+        return proj;
+      });
+
+      // 2. Auto-descubrir proyectos nuevos enviados por la API que no estaban registrados
+      const discovered: MonitoredProject[] = [];
+      for (const [logPid, logData] of latestLogs.entries()) {
+        if (!matchedPids.has(logPid) && logPid !== 'test-check') {
+          const formattedName = logPid
+            .replace(/^mon-/, '')
+            .replace(/[-_]/g, ' ')
+            .replace(/\b\w/g, (c: string) => c.toUpperCase());
+
+          discovered.push({
+            id: logPid,
+            name: formattedName,
+            clientName: 'Detección Automática por API',
+            url: logData.url || 'https://',
+            status: 'online',
+            uptimePercentage: 100.0,
+            avgResponseTimeMs: logData.load_time_ms || 120,
+            sslValid: logData.ssl_valid ?? true,
+            sslExpiresDays: 90,
+            lastHeartbeat: formatRelativeTime(logData.timestamp),
+            supabaseKeepAliveEnabled: true,
+            lastSupabasePing: `Detectado hoy a las ${new Date(logData.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+            recentErrors: []
+          });
+        }
+      }
+
+      const finalProjects = [...updatedList, ...discovered];
+      const newState = { ...state, monitoredProjects: finalProjects };
+      onUpdateState(newState);
+      saveAppState(newState);
+      setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    } catch (err) {
+      console.warn('Fallo de sincronización Supabase Telemetry:', err);
+    } finally {
+      setIsSyncingTelemetry(false);
+    }
+  }, [state, onUpdateState]);
+
+  useEffect(() => {
+    syncTelemetryFromSupabase();
+    const interval = setInterval(() => {
+      syncTelemetryFromSupabase();
+    }, 25000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handlePingKeepAlive = (projectId: string) => {
     setPingingSupabase(true);
@@ -93,10 +222,11 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
   function send(payload) {
     const body = JSON.stringify({
       project_id: config.projectId,
-      event_type: payload.event || 'telemetry',
+      event: payload.event || 'heartbeat',
       url: sanitizeUrl(window.location.href),
-      user_agent: navigator.userAgent,
-      metadata: { ...payload, timestamp: new Date().toISOString() }
+      load_time_ms: payload.loadTimeMs || 0,
+      ssl_valid: window.location.protocol === 'https:',
+      message: payload.message || (payload.type ? (payload.type + ': ' + (payload.detailMessage || '')) : '')
     });
     if (navigator.sendBeacon) {
       const blob = new Blob([body], { type: 'application/json' });
@@ -128,18 +258,18 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
     setTimeout(function () {
       const navEntries = performance.getEntriesByType('navigation');
       const nav = navEntries && navEntries.length > 0 ? navEntries[0] : null;
-      const payload = {
-        event: 'heartbeat',
-        loadTimeMs: Math.round(performance.now() - state.startTime),
-        sslValid: window.location.protocol === 'https:',
-      };
+      const loadTime = Math.round(performance.now() - state.startTime);
+      let metricDetails = 'Load: ' + loadTime + 'ms';
       if (nav) {
-        payload.dnsTimeMs = Math.round(nav.domainLookupEnd - nav.domainLookupStart);
-        payload.tcpTimeMs = Math.round(nav.connectEnd - nav.connectStart);
-        payload.ttfbMs = Math.round(nav.responseStart - nav.requestStart);
-        payload.domContentLoadedMs = Math.round(nav.domContentLoadedEventEnd - nav.startTime);
+        const ttfb = Math.round(nav.responseStart - nav.requestStart);
+        const domReady = Math.round(nav.domContentLoadedEventEnd - nav.startTime);
+        metricDetails += ', TTFB: ' + ttfb + 'ms, DOMReady: ' + domReady + 'ms';
       }
-      send(payload);
+      send({
+        event: 'heartbeat',
+        loadTimeMs: loadTime,
+        message: metricDetails
+      });
     }, 0);
   });
 
@@ -207,17 +337,30 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
             Monitor de Proyectos Levantados & Telemetría
           </h1>
           <p className="text-xs text-slate-400 mt-1 font-mono">
-            Auditoría en tiempo real de Uptime, latencia, certificados SSL y base de datos con anti-pausa.
+            Auditoría en tiempo real conectada a Supabase Cloud. Detección automática de URLs de producción, latencia y SSL.
+            {lastSyncTime && <span className="text-emerald-400 ml-2">● Sincronizado {lastSyncTime}</span>}
           </p>
         </div>
 
-        <button
-          onClick={() => setShowAddProject(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-mono font-medium transition-colors self-start"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Registrar Proyecto</span>
-        </button>
+        <div className="flex items-center gap-3 self-start sm:self-auto">
+          <button
+            onClick={() => syncTelemetryFromSupabase()}
+            disabled={isSyncingTelemetry}
+            className="flex items-center gap-2 px-3.5 py-2 bg-[#161B24] border border-[#232A3B] hover:border-emerald-500/50 rounded-lg text-xs font-mono text-slate-300 transition-colors"
+            title="Consultar últimas URLs y Heartbeats en Supabase"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isSyncingTelemetry ? 'animate-spin' : ''}`} />
+            <span>{isSyncingTelemetry ? 'Sincronizando...' : 'Sincronizar Cloud'}</span>
+          </button>
+
+          <button
+            onClick={() => setShowAddProject(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-mono font-medium transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Registrar Proyecto</span>
+          </button>
+        </div>
       </div>
 
       {/* Projects Grid */}
@@ -234,10 +377,10 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
                   href={proj.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs text-slate-400 hover:text-emerald-400 font-mono flex items-center gap-1 mt-0.5"
+                  className="text-xs text-emerald-400 hover:text-emerald-300 font-mono flex items-center gap-1.5 mt-1 transition-colors group"
                 >
-                  <Globe className="w-3 h-3" />
-                  <span>{proj.url}</span>
+                  <Globe className="w-3 h-3 text-emerald-400 flex-shrink-0 group-hover:scale-110 transition-transform" />
+                  <span className="truncate max-w-[200px] sm:max-w-xs">{proj.url}</span>
                 </a>
               </div>
               <span
@@ -268,8 +411,14 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
               </div>
               <div className="p-2 bg-[#0A0C10] rounded-lg border border-[#1b202c]">
                 <div className="text-[10px] text-slate-400">SSL Válido</div>
-                <div className="text-xs font-bold text-sky-400 mt-1">{proj.sslExpiresDays} días</div>
+                <div className="text-xs font-bold text-sky-400 mt-1">{proj.sslValid ? 'Sí' : 'No'}</div>
               </div>
+            </div>
+
+            {/* Estado del Ping y Última Conexión */}
+            <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between border-t border-[#1b202c] pt-2">
+              <span>Ping:</span>
+              <span className="text-emerald-400 font-semibold">{proj.lastHeartbeat || 'En vivo'}</span>
             </div>
 
             {/* Supabase Keep-Alive Section */}

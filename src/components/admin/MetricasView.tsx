@@ -27,7 +27,7 @@ export const MetricasView: React.FC<MetricasViewProps> = ({ state }) => {
       const { data, count, error } = await supabase
         .from('telemetry_logs')
         .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false })
+        .order('timestamp', { ascending: false })
         .limit(20);
 
       if (!error && typeof count === 'number') {
@@ -226,10 +226,21 @@ export const MetricasView: React.FC<MetricasViewProps> = ({ state }) => {
               </div>
             ) : (
               realTelemetryLogs.map((log, idx) => (
-                <div key={idx} className="p-2.5 bg-[#0D1017] border border-[#1b212d] rounded flex items-center justify-between">
-                  <span className="text-emerald-400 font-bold">{log.project_id}</span>
-                  <span className="text-slate-400 text-[10px]">{log.event_type}</span>
-                  <span className="text-slate-500 text-[10px]">{new Date(log.created_at).toLocaleTimeString()}</span>
+                <div key={idx} className="p-2.5 bg-[#0D1017] border border-[#1b212d] rounded flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex flex-col">
+                    <div className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                      <span className="text-emerald-400 font-bold">{log.project_id}</span>
+                      <span className="text-slate-500 text-[10px] uppercase px-1.5 py-0.2 bg-[#171d27] rounded">{log.event || 'heartbeat'}</span>
+                    </div>
+                    {log.url && (
+                      <span className="text-slate-400 text-[10px] truncate max-w-xs mt-0.5">{log.url}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 text-slate-500 text-[10px] self-end sm:self-auto">
+                    {log.load_time_ms ? <span className="text-sky-400 font-semibold">{log.load_time_ms} ms</span> : null}
+                    <span>{log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : ''}</span>
+                  </div>
                 </div>
               ))
             )}
