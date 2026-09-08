@@ -20,6 +20,9 @@ import { ProyectosBriefView } from './components/studio/ProyectosBriefView';
 import { MaquetasView } from './components/studio/MaquetasView';
 import { ConfiguracionView } from './components/studio/ConfiguracionView';
 
+import { LoginGuard } from './components/auth/LoginGuard';
+import { ALLOWED_EMAIL } from './services/supabaseClient';
+
 export function App() {
   const [state, setState] = useState<AppState>(() => loadAppState());
   const [currentEnv, setCurrentEnv] = useState<Environment>('admin');
@@ -27,9 +30,28 @@ export function App() {
   const [studioTab, setStudioTab] = useState<StudioTab>('evaluacion');
   const [quoteTargetClientId, setQuoteTargetClientId] = useState<string | undefined>(undefined);
 
+  // Estado de Autenticación de 3 Capas
+  const [authenticatedUser, setAuthenticatedUser] = useState<string | null>(() => {
+    const user = sessionStorage.getItem('lsc_authenticated_user');
+    const authTime = sessionStorage.getItem('lsc_auth_timestamp');
+    // Caducidad de sesión: 8 horas (28800000 ms)
+    if (user === ALLOWED_EMAIL && authTime) {
+      if (Date.now() - parseInt(authTime, 10) < 28800000) {
+        return user;
+      }
+    }
+    return null;
+  });
+
   useEffect(() => {
     saveAppState(state);
   }, [state]);
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('lsc_authenticated_user');
+    sessionStorage.removeItem('lsc_auth_timestamp');
+    setAuthenticatedUser(null);
+  };
 
   const handleNavigateToQuote = (clientId: string) => {
     setQuoteTargetClientId(clientId);
@@ -42,6 +64,11 @@ export function App() {
     setStudioTab('maquetas');
   };
 
+  // Si no está autenticado como tiare.perezconcha@gmail.com, se bloquea la renderización por completo
+  if (!authenticatedUser) {
+    return <LoginGuard onLoginSuccess={(email) => setAuthenticatedUser(email)} />;
+  }
+
   return (
     <div className={`min-h-screen flex ${currentEnv === 'admin' ? 'bg-[#0A0C10]' : 'bg-[#FAFBFD]'}`}>
       {/* Sidebar Navigation */}
@@ -52,6 +79,7 @@ export function App() {
         onAdminTabChange={setAdminTab}
         studioTab={studioTab}
         onStudioTabChange={setStudioTab}
+        onLogout={handleLogout}
       />
 
       {/* Main Content Area */}

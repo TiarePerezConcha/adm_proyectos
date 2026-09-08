@@ -28,6 +28,7 @@ interface SidebarProps {
   onAdminTabChange: (tab: AdminTab) => void;
   studioTab: StudioTab;
   onStudioTabChange: (tab: StudioTab) => void;
+  onLogout?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -37,6 +38,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onAdminTabChange,
   studioTab,
   onStudioTabChange,
+  onLogout,
 }) => {
   const [onboardingOpen, setOnboardingOpen] = React.useState(true);
   const [clientesOpen, setClientesOpen] = React.useState(true);
@@ -146,8 +148,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </nav>
         </div>
 
-        {/* Switch to Studio Banner */}
-        <div className="p-3 border-t border-[#1E232F]">
+        {/* Switch to Studio Banner & Logout */}
+        <div className="p-3 border-t border-[#1E232F] space-y-2">
           <button
             onClick={() => onEnvChange('studio')}
             className="w-full flex items-center justify-between p-3 rounded-xl bg-gradient-to-r from-rose-950/40 to-slate-900 border border-rose-800/40 hover:border-rose-500/60 text-slate-200 transition-all group text-left"
@@ -161,6 +163,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
             <ExternalLink className="w-3.5 h-3.5 text-rose-400 group-hover:translate-x-0.5 transition-transform" />
           </button>
+
+          {onLogout && (
+            <div className="pt-1 flex items-center justify-between px-1 text-[11px] text-slate-400">
+              <span className="truncate max-w-[150px] font-mono text-emerald-400" title="tiare.perezconcha@gmail.com">
+                🔒 tiare.perezconcha
+              </span>
+              <button
+                onClick={onLogout}
+                className="text-rose-400 hover:text-rose-300 transition-colors font-medium hover:underline cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          )}
         </div>
       </aside>
     );
@@ -330,7 +346,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Switch to LSC Admin Banner */}
-      <div className="p-3 border-t border-slate-100">
+      <div className="p-3 border-t border-slate-100 space-y-2">
         <button
           onClick={() => onEnvChange('admin')}
           className="w-full flex items-center justify-between p-3 rounded-xl bg-slate-900 text-white hover:bg-black transition-all group text-left shadow-sm"
@@ -344,6 +360,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           <ArrowLeftRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-white transition-colors" />
         </button>
+
+        {onLogout && (
+          <div className="pt-1 flex items-center justify-between px-1 text-[11px] text-slate-500">
+            <span className="truncate max-w-[150px] font-mono text-emerald-700" title="tiare.perezconcha@gmail.com">
+              🔒 tiare.perezconcha
+            </span>
+            <button
+              onClick={onLogout}
+              className="text-rose-600 hover:text-rose-800 transition-colors font-medium hover:underline cursor-pointer"
+            >
+              Cerrar
+            </button>
+          </div>
+        )}
       </div>
     </aside>
   );
