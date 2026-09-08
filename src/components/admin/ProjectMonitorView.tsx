@@ -33,6 +33,7 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
   const [auditingId, setAuditingId] = useState<string | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<string>('');
   const [showAddProject, setShowAddProject] = useState(false);
+  const [rawTelemetryLogs, setRawTelemetryLogs] = useState<any[]>([]);
 
   const [newName, setNewName] = useState('');
   const [newClient, setNewClient] = useState('');
@@ -194,6 +195,8 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
       }
 
       if (!logs || logs.length === 0) return;
+
+      setRawTelemetryLogs(logs.slice(0, 15));
 
       // Agrupar último ping por project_id
       const latestLogs = new Map<string, any>();
@@ -379,20 +382,29 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
       ssl_valid: window.location.protocol === 'https:',
       message: payload.message || (payload.type ? (payload.type + ': ' + (payload.detailMessage || '')) : '')
     });
-    if (navigator.sendBeacon) {
-      const blob = new Blob([body], { type: 'application/json' });
-      const ok = navigator.sendBeacon(config.endpoint, blob);
-      if (!ok) fallbackSend(body);
-    } else { fallbackSend(body); }
-  }
 
-  function fallbackSend(body) {
-    fetch(config.endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': config.apiKey, 'Authorization': 'Bearer ' + config.apiKey },
-      body,
-      keepalive: true
-    }).catch(function () {});
+    const targetUrl = config.endpoint.includes('apikey=')
+      ? config.endpoint
+      : (config.endpoint + (config.endpoint.includes('?') ? '&' : '?') + 'apikey=' + config.apiKey);
+
+    if (window.fetch) {
+      fetch(targetUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': config.apiKey,
+          'Authorization': 'Bearer ' + config.apiKey
+        },
+        body: body,
+        keepalive: true
+      }).catch(function () {
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon(targetUrl, new Blob([body], { type: 'application/json' }));
+        }
+      });
+    } else if (navigator.sendBeacon) {
+      navigator.sendBeacon(targetUrl, new Blob([body], { type: 'application/json' }));
+    }
   }
 
   function handleAnomaly(details) {
@@ -629,6 +641,68 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
             )}
           </div>
         ))}
+      </div>
+
+      {/* Stream de Pings en Vivo desde Supabase */}
+      <div className="bg-[#12151C] border border-[#202634] p-6 rounded-2xl space-y-4 font-mono text-xs">
+        <div className="flex items-center justify-between border-b border-[#202634] pb-3">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <h2 className="text-white font-bold text-sm">
+              Stream en Vivo de Pings Recibidos (Supabase Cloud API)
+            </h2>
+          </div>
+          <span className="text-[10px] text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 px-2 py-0.5 rounded">
+            🟢 {rawTelemetryLogs.length} pings registrados recientemente
+          </span>
+        </div>
+
+        {rawTelemetryLogs.length === 0 ? (
+          <div className="p-8 text-center text-slate-500 text-xs">
+            No se han recibido pings en la base de datos aún. Al abrir cualquier sitio inyectado aparecerá aquí automáticamente.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-[11px] border-collapse">
+              <thead>
+                <tr className="border-b border-[#202634] text-slate-400">
+                  <th className="pb-2">Proyecto ID</th>
+                  <th className="pb-2">URL Detectada</th>
+                  <th className="pb-2">Evento</th>
+                  <th className="pb-2">Latencia</th>
+                  <th className="pb-2">SSL</th>
+                  <th className="pb-2">Detalle</th>
+                  <th className="pb-2 text-right">Fecha / Hora</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#1b212d]">
+                {rawTelemetryLogs.map((log, idx) => (
+                  <tr key={idx} className="hover:bg-[#161a24] transition-colors">
+                    <td className="py-2.5 text-emerald-400 font-bold">{log.project_id}</td>
+                    <td className="py-2.5 text-slate-300 max-w-[220px] truncate">
+                      <a href={log.url} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400">
+                        {log.url}
+                      </a>
+                    </td>
+                    <td className="py-2.5">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] ${log.event === 'security_anomaly' ? 'bg-rose-950 text-rose-300 border border-rose-800' : 'bg-[#1a2130] text-sky-300'}`}>
+                        {log.event}
+                      </span>
+                    </td>
+                    <td className="py-2.5 text-white font-semibold">{log.load_time_ms ? `${log.load_time_ms} ms` : '-'}</td>
+                    <td className="py-2.5">
+                      {log.ssl_valid ? <span className="text-emerald-400">HTTPS ✓</span> : <span className="text-amber-400">Sin SSL</span>}
+                    </td>
+                    <td className="py-2.5 text-slate-400 max-w-[180px] truncate">{log.message || '-'}</td>
+                    <td className="py-2.5 text-right text-slate-500">
+                      {log.timestamp ? new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Universal SDK & Telemetry Integration Guide */}
