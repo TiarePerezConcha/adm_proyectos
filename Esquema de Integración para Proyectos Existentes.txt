@@ -1,0 +1,40 @@
+ <!-- LSC Telemetry & Security Agent v1.0 -->
+<script>
+  (function(config) {
+    const start = performance.now();
+    window.addEventListener('load', function() {
+      const timing = performance.timing;
+      const payload = {
+        projectId: config.projectId,
+        event: 'heartbeat',
+        url: window.location.href,
+        loadTimeMs: Math.round(performance.now() - start),
+        dnsTimeMs: timing.domainLookupEnd - timing.domainLookupStart,
+        tcpTimeMs: timing.connectEnd - timing.connectStart,
+        sslValid: window.location.protocol === 'https:',
+        timestamp: new Date().toISOString()
+      };
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(config.endpoint, JSON.stringify(payload));
+      } else {
+        fetch(config.endpoint, { method: 'POST', body: JSON.stringify(payload), mode: 'no-cors' });
+      }
+    });
+
+    // Captura de errores no controlados y anomalías
+    window.addEventListener('error', function(e) {
+      const errorPayload = {
+        projectId: config.projectId,
+        event: 'security_anomaly',
+        type: 'javascript_error',
+        message: e.message,
+        url: window.location.href,
+        timestamp: new Date().toISOString()
+      };
+      if (navigator.sendBeacon) navigator.sendBeacon(config.endpoint, JSON.stringify(errorPayload));
+    });
+  })({
+    projectId: 'MI_PROYECTO_ID',
+    endpoint: 'https://mi-endpoint-o-webhook.com/api/telemetry'
+  });
+</script>
