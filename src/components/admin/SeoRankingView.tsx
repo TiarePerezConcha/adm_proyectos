@@ -138,34 +138,61 @@ export const SeoRankingView: React.FC<SeoRankingViewProps> = ({ state }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1b202c]">
-              {filtered.map((item, idx) => (
-                <tr key={idx} className="hover:bg-[#161a24] transition-colors">
-                  <td className="py-3 px-4 text-white font-medium flex items-center gap-2">
-                    <span>{item.query}</span>
-                    {item.trend === 'up' && (
-                      <span title="Posición en alza">
-                        <TrendingUp className="w-3 h-3 text-emerald-400 inline" />
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-3 px-4 text-right text-slate-300 font-bold">{item.clicks}</td>
-                  <td className="py-3 px-4 text-right text-slate-400">{item.impressions}</td>
-                  <td className="py-3 px-4 text-right text-slate-400">{item.ctr.toFixed(1)}%</td>
-                  <td className="py-3 px-4 text-right">
-                    <span
-                      className={`inline-block px-2 py-0.5 rounded font-bold ${
-                        item.position <= 3
-                          ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/50'
-                          : item.position <= 10
-                          ? 'bg-sky-950 text-sky-400 border border-sky-800/50'
-                          : 'bg-slate-800 text-slate-300'
-                      }`}
-                    >
-                      #{item.position.toFixed(1)}
-                    </span>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-12 px-4 text-center">
+                    <div className="max-w-lg mx-auto space-y-3">
+                      <div className="w-10 h-10 mx-auto rounded-full bg-slate-800/80 border border-slate-700 flex items-center justify-center text-slate-400">
+                        <Search className="w-5 h-5 text-emerald-400" />
+                      </div>
+                      <div className="text-sm font-bold text-white font-mono">
+                        Google Search Console API no sincronizada (Sin consultas registradas)
+                      </div>
+                      <p className="text-xs text-slate-400 leading-relaxed font-mono">
+                        Esta sección rastrea las búsquedas orgánicas realizadas por personas en <strong>Google Chile (google.cl)</strong>.
+                        Para sincronizar automáticamente los clics, impresiones y posiciones de tus proyectos, se requiere vincular una <strong>Service Account de Google Cloud</strong> con permisos en Search Console para tus dominios (ej. <span className="text-emerald-300">conpi.cl</span> o GitHub Pages).
+                      </p>
+                      <div className="text-[11px] text-slate-400 bg-[#0A0C10] p-3.5 rounded-lg border border-[#1b202c] text-left space-y-1.5 font-mono">
+                        <p className="font-semibold text-emerald-400 flex items-center gap-1.5">
+                          <span>💡</span>
+                          <span>¿Por qué no se actualiza al entrar a un proyecto?</span>
+                        </p>
+                        <p>• <strong>Monitor de Telemetría:</strong> Mide cuando tú o un usuario <em>entran a la página</em> (carga, TTFB, SSL, errores).</p>
+                        <p>• <strong>SEO Ranking:</strong> Mide cuántas personas <em>escribieron una palabra en el buscador de Google</em> y vieron tu enlace en los resultados.</p>
+                      </div>
+                    </div>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filtered.map((item, idx) => (
+                  <tr key={idx} className="hover:bg-[#161a24] transition-colors">
+                    <td className="py-3 px-4 text-white font-medium flex items-center gap-2">
+                      <span>{item.query}</span>
+                      {item.trend === 'up' && (
+                        <span title="Posición en alza">
+                          <TrendingUp className="w-3 h-3 text-emerald-400 inline" />
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-right text-slate-300 font-bold">{item.clicks}</td>
+                    <td className="py-3 px-4 text-right text-slate-400">{item.impressions}</td>
+                    <td className="py-3 px-4 text-right text-slate-400">{item.ctr.toFixed(1)}%</td>
+                    <td className="py-3 px-4 text-right">
+                      <span
+                        className={`inline-block px-2 py-0.5 rounded font-bold ${
+                          item.position <= 3
+                            ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/50'
+                            : item.position <= 10
+                            ? 'bg-sky-950 text-sky-400 border border-sky-800/50'
+                            : 'bg-slate-800 text-slate-300'
+                        }`}
+                      >
+                        #{item.position.toFixed(1)}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

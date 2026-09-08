@@ -76,10 +76,38 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
       const newState = { ...state, monitoredProjects: updated };
       onUpdateState(newState);
       saveAppState(newState);
-    } catch {
-      console.warn('Error auditando:', projId);
+    } catch (err: any) {
+      console.warn('Error auditando proyecto (sitio inaccesible o caído):', projId, err);
+      try {
+        await supabase.from('telemetry_logs').insert({
+          project_id: proj.id,
+          event: 'error',
+          url: proj.url,
+          load_time_ms: 0,
+          ssl_valid: false,
+          message: `Sitio inaccesible o caído: ${err?.message || 'Error de red'}`
+        });
+      } catch {}
+
+      const updated = state.monitoredProjects.map((p) => {
+        if (p.id === projId) {
+          const newUptime = Math.max(0, Math.round((p.uptimePercentage - 5.0) * 10) / 10);
+          return {
+            ...p,
+            status: 'offline' as const,
+            uptimePercentage: newUptime,
+            lastHeartbeat: 'Sin respuesta (Caído / Offline)',
+            lastSupabasePing: `Fallo: ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+          };
+        }
+        return p;
+      });
+      const newState = { ...state, monitoredProjects: updated };
+      onUpdateState(newState);
+      saveAppState(newState);
     } finally {
       setAuditingId(null);
+      syncTelemetryFromSupabase();
     }
   };
 
@@ -113,8 +141,26 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
               lastHeartbeat: 'Verificado en vivo hace un instante (200 OK)',
               lastSupabasePing: `Auditado ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
             };
-          } catch {
-            return p;
+          } catch (err: any) {
+            try {
+              await supabase.from('telemetry_logs').insert({
+                project_id: p.id,
+                event: 'error',
+                url: p.url,
+                load_time_ms: 0,
+                ssl_valid: false,
+                message: `Auditoría masiva fallida: ${err?.message || 'Sitio fuera de línea'}`
+              });
+            } catch {}
+
+            const newUptime = Math.max(0, Math.round((p.uptimePercentage - 5.0) * 10) / 10);
+            return {
+              ...p,
+              status: 'offline' as const,
+              uptimePercentage: newUptime,
+              lastHeartbeat: 'Sin respuesta (Caído / Offline)',
+              lastSupabasePing: `Fallo a las ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+            };
           }
         })
       );
@@ -123,6 +169,7 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
       saveAppState(newState);
     } finally {
       setIsAuditingLive(false);
+      syncTelemetryFromSupabase();
     }
   };
 
@@ -300,15 +347,50 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
     };
   }, []);
 
-  const handlePingKeepAlive = (projectId: string) => {
+  const handlePingKeepAlive = async (projectId: string) => {
     setPingingSupabase(true);
-    setTimeout(() => {
+    const targetProj = state.monitoredProjects.find((p) => p.id === projectId);
+    if (!targetProj || !targetProj.url) {
+      setPingingSupabase(false);
+      return;
+    }
+
+    try {
+      const t0 = performance.now();
+      let isSuccess = false;
+      let latency = 0;
+      try {
+        await fetch(targetProj.url, { mode: 'no-cors', cache: 'no-cache' });
+        latency = Math.max(1, Math.round(performance.now() - t0));
+        isSuccess = true;
+      } catch {
+        isSuccess = false;
+      }
+
+      try {
+        await supabase.from('telemetry_logs').insert({
+          project_id: targetProj.id,
+          event: isSuccess ? 'heartbeat' : 'error',
+          url: targetProj.url,
+          load_time_ms: latency,
+          ssl_valid: targetProj.url.startsWith('https:'),
+          message: isSuccess ? `Keep-Alive manual en vivo: ${latency}ms (200 OK)` : 'Keep-Alive fallido: Sitio inaccesible'
+        });
+      } catch {}
+
       const now = new Date();
       const updated = state.monitoredProjects.map((p) => {
         if (p.id === projectId) {
+          const newUptime = isSuccess
+            ? Math.min(100, Math.round((p.uptimePercentage + 0.5) * 10) / 10)
+            : Math.max(0, Math.round((p.uptimePercentage - 5.0) * 10) / 10);
           return {
             ...p,
-            lastSupabasePing: `Hoy a las ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (OK - Keep-Alive ejecutado)`,
+            status: isSuccess ? ('online' as const) : ('offline' as const),
+            avgResponseTimeMs: isSuccess ? latency : p.avgResponseTimeMs,
+            uptimePercentage: newUptime,
+            lastHeartbeat: isSuccess ? 'Verificado en vivo (200 OK)' : 'Sin respuesta (Caído / Offline)',
+            lastSupabasePing: `${isSuccess ? 'OK' : 'Fallo'} a las ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
           };
         }
         return p;
@@ -316,8 +398,12 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
       const newState = { ...state, monitoredProjects: updated };
       onUpdateState(newState);
       saveAppState(newState);
+      syncTelemetryFromSupabase();
+    } catch (err) {
+      console.warn('Error en keep-alive:', err);
+    } finally {
       setPingingSupabase(false);
-    }, 900);
+    }
   };
 
   const handleAddProject = (e: React.FormEvent) => {

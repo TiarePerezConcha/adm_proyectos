@@ -157,9 +157,11 @@ export const MetricasView: React.FC<MetricasViewProps> = ({ state }) => {
             <span>Uptime Promedio</span>
           </div>
           <div className="text-2xl font-mono font-bold text-amber-400 mt-2">
-            99.9%
+            {totalProjects > 0 ? (state.monitoredProjects.reduce((acc, p) => acc + (p.uptimePercentage || 100), 0) / totalProjects).toFixed(1) : '100.0'}%
           </div>
-          <span className="text-[9px] text-amber-400/80 font-mono block mt-1">Salud Global</span>
+          <span className="text-[9px] text-amber-400/80 font-mono block mt-1">
+            {state.monitoredProjects.filter((p) => p.status === 'online').length}/{totalProjects} Proyectos en línea
+          </span>
         </div>
 
         <div className="bg-[#12151C] border border-[#202634] p-4 rounded-xl">
