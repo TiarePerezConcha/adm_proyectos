@@ -69,44 +69,126 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
     setNewUrl('https://');
   };
 
-  const telemetrySnippetCode = `<!-- LSC Telemetry & Security Agent v1.0 -->
+  const telemetrySnippetCode = `<!-- LSC Telemetry & Security Agent v2.0 -->
 <script>
-  (function(config) {
-    const start = performance.now();
-    window.addEventListener('load', function() {
-      const timing = performance.timing;
-      const payload = {
-        projectId: config.projectId,
-        event: 'heartbeat',
-        url: window.location.href,
-        loadTimeMs: Math.round(performance.now() - start),
-        dnsTimeMs: timing.domainLookupEnd - timing.domainLookupStart,
-        tcpTimeMs: timing.connectEnd - timing.connectStart,
-        sslValid: window.location.protocol === 'https:',
-        timestamp: new Date().toISOString()
-      };
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon(config.endpoint, JSON.stringify(payload));
-      } else {
-        fetch(config.endpoint, { method: 'POST', body: JSON.stringify(payload), mode: 'no-cors' });
-      }
-    });
+(function (config) {
+  'use strict';
+  const state = {
+    errorCount: 0,
+    maxErrorsPerSession: config.maxErrorsPerSession ?? 20,
+    seenErrors: new Set(),
+    startTime: performance.now(),
+  };
+  const sampleRate = config.sampleRate ?? 1;
+  if (Math.random() > sampleRate) return;
 
-    window.addEventListener('error', function(e) {
-      const errorPayload = {
-        projectId: config.projectId,
-        event: 'security_anomaly',
-        type: 'javascript_error',
-        message: e.message,
-        url: window.location.href,
-        timestamp: new Date().toISOString()
-      };
-      if (navigator.sendBeacon) navigator.sendBeacon(config.endpoint, JSON.stringify(errorPayload));
+  function sanitizeUrl(url) {
+    try {
+      const u = new URL(url);
+      if (!config.includeQueryParams) { u.search = ''; u.hash = ''; }
+      return u.toString();
+    } catch { return 'invalid-url'; }
+  }
+
+  function send(payload) {
+    const body = JSON.stringify({
+      project_id: config.projectId,
+      event_type: payload.event || 'telemetry',
+      url: sanitizeUrl(window.location.href),
+      user_agent: navigator.userAgent,
+      metadata: { ...payload, timestamp: new Date().toISOString() }
     });
-  })({
-    projectId: 'TU_ID_DE_PROYECTO',
-    endpoint: '${state.settings.telemetryEndpoint}'
+    if (navigator.sendBeacon) {
+      const blob = new Blob([body], { type: 'application/json' });
+      const ok = navigator.sendBeacon(config.endpoint, blob);
+      if (!ok) fallbackSend(body);
+    } else { fallbackSend(body); }
+  }
+
+  function fallbackSend(body) {
+    fetch(config.endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': config.apiKey, 'Authorization': 'Bearer ' + config.apiKey },
+      body,
+      keepalive: true
+    }).catch(function () {});
+  }
+
+  function handleAnomaly(details) {
+    if (state.errorCount >= state.maxErrorsPerSession) return;
+    const key = details.type + ':' + (details.message || details.blockedUri || details.src || '');
+    if (state.seenErrors.has(key)) return;
+    state.seenErrors.add(key);
+    state.errorCount++;
+    send({ event: 'security_anomaly', ...details });
+  }
+
+  // 1. Navigation Timing v2
+  window.addEventListener('load', function () {
+    setTimeout(function () {
+      const navEntries = performance.getEntriesByType('navigation');
+      const nav = navEntries && navEntries.length > 0 ? navEntries[0] : null;
+      const payload = {
+        event: 'heartbeat',
+        loadTimeMs: Math.round(performance.now() - state.startTime),
+        sslValid: window.location.protocol === 'https:',
+      };
+      if (nav) {
+        payload.dnsTimeMs = Math.round(nav.domainLookupEnd - nav.domainLookupStart);
+        payload.tcpTimeMs = Math.round(nav.connectEnd - nav.connectStart);
+        payload.ttfbMs = Math.round(nav.responseStart - nav.requestStart);
+        payload.domContentLoadedMs = Math.round(nav.domContentLoadedEventEnd - nav.startTime);
+      }
+      send(payload);
+    }, 0);
   });
+
+  // 2. Errores JS
+  window.addEventListener('error', function (e) {
+    handleAnomaly({ type: 'javascript_error', message: e.message, source: e.filename, line: e.lineno, col: e.colno });
+  });
+
+  // 3. Promesas no manejadas
+  window.addEventListener('unhandledrejection', function (e) {
+    handleAnomaly({ type: 'unhandled_rejection', message: e.reason && e.reason.message ? e.reason.message : String(e.reason) });
+  });
+
+  // 4. Violaciones CSP
+  document.addEventListener('securitypolicyviolation', function (e) {
+    handleAnomaly({ type: 'csp_violation', blockedUri: e.blockedURI, violatedDirective: e.violatedDirective, sourceFile: e.sourceFile, lineNumber: e.lineNumber });
+  });
+
+  // 5. Contenido mixto
+  window.addEventListener('load', function () {
+    if (window.location.protocol !== 'https:') return;
+    const insecure = performance.getEntriesByType('resource').filter(function (r) { return r.name.indexOf('http://') === 0; });
+    if (insecure.length > 0) {
+      handleAnomaly({ type: 'mixed_content', count: insecure.length, urls: insecure.slice(0, 5).map(function (r) { return r.name; }) });
+    }
+  });
+
+  // 6. Inyeccion de DOM (XSS / Skimmers)
+  if (window.MutationObserver) {
+    const observer = new MutationObserver(function (mutations) {
+      mutations.forEach(function (m) {
+        m.addedNodes.forEach(function (node) {
+          if (node.nodeType !== 1) return;
+          if (node.tagName === 'SCRIPT' || node.tagName === 'IFRAME') {
+            handleAnomaly({ type: 'dom_injection', tag: node.tagName, src: node.src || 'inline' });
+          }
+        });
+      });
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+  }
+})({
+  projectId: 'MI_PROYECTO_ID',
+  endpoint: 'https://cvfybrtblxzpawnxqsnd.supabase.co/rest/v1/telemetry_logs',
+  apiKey: '${state.settings.supabaseAnonKey || 'sb_publishable_FaHiwWE7FIHP5-Xr7F6UQg_bJYFphXb'}',
+  sampleRate: 1,
+  includeQueryParams: false,
+  maxErrorsPerSession: 20
+});
 </script>`;
 
   const handleCopySnippet = () => {

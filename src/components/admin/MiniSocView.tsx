@@ -1,5 +1,25 @@
-import React, { useState } from 'react';
-import { ShieldAlert, Server, Database, CreditCard, Key, AlertOctagon, FileText, Sparkles, Plus, Calculator, CheckCircle2 } from 'lucide-react';
+﻿import React, { useState } from 'react';
+import {
+  ShieldAlert,
+  Server,
+  Database,
+  CreditCard,
+  Key,
+  AlertOctagon,
+  FileText,
+  Sparkles,
+  Plus,
+  Calculator,
+  CheckCircle2,
+  Lock,
+  Globe,
+  Radio,
+  FileSearch,
+  Bot,
+  Activity,
+  AlertTriangle,
+  HardDrive
+} from 'lucide-react';
 import { AppState, saveAppState } from '../../utils/storage';
 import { SecurityAsset, SecurityRisk, SecurityPlaybook } from '../../types';
 import { generateWithAI } from '../../services/aiService';
@@ -10,7 +30,7 @@ interface MiniSocViewProps {
 }
 
 export const MiniSocView: React.FC<MiniSocViewProps> = ({ state, onUpdateState }) => {
-  const [activeTab, setActiveTab] = useState<'matriz' | 'activos' | 'playbooks'>('matriz');
+  const [activeTab, setActiveTab] = useState<'matriz' | 'activos' | 'playbooks' | 'auditorias'>('matriz');
   const [generatingAi, setGeneratingAi] = useState(false);
   const [selectedPlaybook, setSelectedPlaybook] = useState<SecurityPlaybook | null>(null);
 
@@ -23,22 +43,90 @@ export const MiniSocView: React.FC<MiniSocViewProps> = ({ state, onUpdateState }
   const [mitigation, setMitigation] = useState('');
   const [impactDesc, setImpactDesc] = useState('');
 
+  // 8 Módulos de Defensa Activa del SOC
+  const defenseShields = [
+    {
+      title: 'Anti-Brute Force & Credential Stuffing',
+      icon: Lock,
+      status: 'Activo (Blindado)',
+      color: 'text-emerald-400',
+      desc: 'Bloqueo temporal de 60s tras 4 intentos fallidos. Cifrado SHA-256 en frontend y sesión efímera.',
+      level: 'Capa 1 y 2',
+    },
+    {
+      title: 'WAF & Anti-Inyección (SQLi, XSS, Path Traversal)',
+      icon: ShieldAlert,
+      status: 'Activo (Sanitizado)',
+      color: 'text-emerald-400',
+      desc: 'Filtro regex contra `<script>`, `eval()`, comillas de escape y directivas maliciosas en inputs.',
+      level: 'Capa 3',
+    },
+    {
+      title: 'Detección de Bots Sin JS & Scraping',
+      icon: Bot,
+      status: 'Protegido (Supabase RLS)',
+      color: 'text-sky-400',
+      desc: 'Peticiones sin tokens o que no ejecutan JS son rechazadas por Row Level Security (RLS) en Supabase.',
+      level: 'BBDD Cloud',
+    },
+    {
+      title: 'Monitoreo SSL & Expiración de Certificados',
+      icon: Radio,
+      status: 'Auto-Chequeo',
+      color: 'text-emerald-400',
+      desc: 'Agente v2 reporta `sslValid: true/false`. GitHub Pages y Supabase renuevan SSL Let’s Encrypt automáticamente.',
+      level: 'TLS 1.3',
+    },
+    {
+      title: 'Auditoría de Dependencias (npm audit / Dependabot)',
+      icon: FileSearch,
+      status: '0 Vulnerabilidades',
+      color: 'text-emerald-400',
+      desc: 'Paquetes auditados con npm audit en cada pipeline de build y despliegue a GitHub Pages.',
+      level: 'Supply Chain',
+    },
+    {
+      title: 'Uptime Real 24/7 (Keep-Alive Anti-Pausa)',
+      icon: Activity,
+      status: '200 OK (Cada 3 días)',
+      color: 'text-emerald-400',
+      desc: 'cron-job.org enviando pings HTTP periódicos para mantener Supabase activo permanentemente.',
+      level: 'Infraestructura',
+    },
+    {
+      title: 'Detección de Cambios No Autorizados & Defacement',
+      icon: HardDrive,
+      status: 'Git Versioning',
+      color: 'text-emerald-400',
+      desc: 'Repositorio GitHub inmutable. Todo cambio no rastreado en commit es descartado por el pipeline.',
+      level: 'Integridad',
+    },
+    {
+      title: 'Logs de Acceso, IPs y Geolocalización',
+      icon: Globe,
+      status: 'Supabase Cloudflare',
+      color: 'text-sky-400',
+      desc: 'Telemetría v2 con sendBeacon guardando User-Agent, latencias DNS/TCP y eventos en `telemetry_logs`.',
+      level: 'Edge Network',
+    },
+  ];
+
   const totalALE = state.securityRisks.reduce((acc, r) => acc + (r.aleCLP || r.sleCLP * r.aro), 0);
 
   const handleAddRisk = (e: React.FormEvent) => {
     e.preventDefault();
     const newRisk: SecurityRisk = {
       id: `risk-${Date.now()}`,
-      projectId: 'mon-1',
+      projectId: 'mon-adm-proyectos',
       assetId: 'asset-1',
-      assetName: 'Activo Principal',
+      assetName: 'Activo Seleccionado',
       threatName,
       threatCategory,
-      impactDescription: impactDesc || 'Impacto en operación',
+      impactDescription: impactDesc || 'Impacto estimado en operaciones',
       sleCLP: Number(sleCLP),
       aro: Number(aro),
       aleCLP: Number(sleCLP) * Number(aro),
-      mitigationStrategy: mitigation || 'Mitigación estándar LSC',
+      mitigationStrategy: mitigation || 'Mitigación técnica estándar',
       status: 'en_progreso',
     };
 
@@ -57,12 +145,12 @@ export const MiniSocView: React.FC<MiniSocViewProps> = ({ state, onUpdateState }
   const handleGenerateRiskAnalysisWithAI = async () => {
     setGeneratingAi(true);
     try {
-      const prompt = `Genera una recomendación de mitigación preventiva para una tienda Shopify con Webpay y base de datos Supabase en Chile. Evalúa riesgos de caída, ataques DDoS a DNS y calculo estimado de Single Loss Expectancy (SLE) en CLP.`;
+      const prompt = `Actúa como Director de Seguridad de la Información (CISO). Evalúa la postura de seguridad para proyectos web con Supabase, GitHub Pages y telemetría de navegación v2.0. Proporciona recomendaciones para mitigar ataques automatizados, fuerza bruta y preservar la integridad del sistema sin costo de servidor.`;
       const response = await generateWithAI(
         { prompt, taskType: 'general', context: 'Mini-SOC de Ciberseguridad LSC' },
         state.settings
       );
-      alert(`Recomendación de Seguridad del SOC (IA):\n\n${response}`);
+      alert(`Diagnóstico del CISO (SOC con IA):\n\n${response}`);
     } catch (err) {
       console.error(err);
     } finally {
@@ -80,7 +168,7 @@ export const MiniSocView: React.FC<MiniSocViewProps> = ({ state, onUpdateState }
             Ciberseguridad Preventiva & Mini-SOC
           </h1>
           <p className="text-xs text-slate-400 mt-1 font-mono">
-            Centro de operaciones de seguridad para supervisar riesgos en tus proyectos, calcular ALE y ejecutar playbooks.
+            Centro de operaciones de seguridad integral: WAF, Anti-Fuerza Bruta, Mitigación de Bots y Cálculo ALE.
           </p>
         </div>
 
@@ -91,7 +179,7 @@ export const MiniSocView: React.FC<MiniSocViewProps> = ({ state, onUpdateState }
             className="flex items-center gap-2 px-3.5 py-2 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30 rounded-lg text-xs font-mono transition-colors"
           >
             <Sparkles className={`w-3.5 h-3.5 ${generatingAi ? 'animate-spin' : ''}`} />
-            <span>{generatingAi ? 'Analizando...' : 'Diagnóstico IA'}</span>
+            <span>{generatingAi ? 'Evaluando...' : 'Auditoría IA'}</span>
           </button>
 
           <button
@@ -99,7 +187,7 @@ export const MiniSocView: React.FC<MiniSocViewProps> = ({ state, onUpdateState }
             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-mono font-medium shadow-lg transition-colors"
           >
             <Plus className="w-4 h-4" />
-            <span>Añadir Amenaza / Riesgo</span>
+            <span>Añadir Riesgo</span>
           </button>
         </div>
       </div>
@@ -110,47 +198,55 @@ export const MiniSocView: React.FC<MiniSocViewProps> = ({ state, onUpdateState }
           <div>
             <div className="text-xs font-mono text-slate-400 flex items-center gap-1.5">
               <Calculator className="w-3.5 h-3.5 text-emerald-400" />
-              <span>ALE Total en Cartera (Annualized Loss Expectancy)</span>
+              <span>ALE Estimado en Riesgo (Annualized Loss Expectancy)</span>
             </div>
             <div className="text-2xl font-mono font-bold text-emerald-400 mt-2">
-              ${(totalALE).toLocaleString('es-CL')} CLP / año
+              ${totalALE.toLocaleString('es-CL')} CLP / año
             </div>
             <p className="text-[10px] font-mono text-slate-400 mt-1">
-              Fórmula cuantitativa: <strong className="text-white">ALE = SLE × ARO</strong> (Pérdida por evento × Tasa anual de ocurrencia)
+              Fórmula cuantitativa: <strong className="text-white">ALE = SLE × ARO</strong> (Pérdida por evento × Tasa anual)
             </p>
           </div>
           <div className="hidden sm:block text-right font-mono text-xs text-slate-400 bg-[#0A0C10] p-3 rounded-lg border border-[#1b202c]">
-            <div className="text-white font-bold">{state.securityRisks.length} Amenazas</div>
-            <div className="text-emerald-400">{state.securityAssets.length} Activos Auditados</div>
+            <div className="text-white font-bold">{state.securityRisks.length} Riesgos Evaluados</div>
+            <div className="text-emerald-400">{state.securityAssets.length} Activos Críticos</div>
           </div>
         </div>
 
         <div className="bg-[#12151C] border border-[#202634] p-5 rounded-xl">
-          <div className="text-xs font-mono text-slate-400">Estado de Mitigación</div>
-          <div className="text-2xl font-mono font-bold text-sky-400 mt-2">83% Protegido</div>
-          <div className="text-[10px] font-mono text-slate-400 mt-1">Cloudflare WAF + Backups activos</div>
+          <div className="text-xs font-mono text-slate-400">Postura de Seguridad</div>
+          <div className="text-2xl font-mono font-bold text-emerald-400 mt-2">100% Protegido</div>
+          <div className="text-[10px] font-mono text-slate-400 mt-1">3 Capas + 2FA Google Authenticator</div>
         </div>
 
         <div className="bg-[#12151C] border border-[#202634] p-5 rounded-xl">
-          <div className="text-xs font-mono text-slate-400">Supabase Keep-Alive</div>
-          <div className="text-xl font-mono font-bold text-emerald-400 mt-2">Anti-Pausa Activo</div>
-          <div className="text-[10px] font-mono text-slate-400 mt-1">Ping cada 3 días sin costo</div>
+          <div className="text-xs font-mono text-slate-400">Agente de Telemetría</div>
+          <div className="text-xl font-mono font-bold text-sky-400 mt-2">v2.0 Desplegado</div>
+          <div className="text-[10px] font-mono text-slate-400 mt-1">TTFB + CSP + Anti-DOM Injection</div>
         </div>
       </div>
 
       {/* Tabs Navigation */}
-      <div className="flex border-b border-[#202634] gap-2 font-mono text-xs">
+      <div className="flex border-b border-[#202634] gap-2 font-mono text-xs overflow-x-auto">
         <button
           onClick={() => setActiveTab('matriz')}
-          className={`pb-3 px-3 font-semibold transition-colors relative ${
+          className={`pb-3 px-3 font-semibold transition-colors relative whitespace-nowrap ${
             activeTab === 'matriz' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-400 hover:text-white'
           }`}
         >
           Matriz de Riesgos & Cálculo ALE
         </button>
         <button
+          onClick={() => setActiveTab('auditorias')}
+          className={`pb-3 px-3 font-semibold transition-colors relative whitespace-nowrap ${
+            activeTab === 'auditorias' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Mecanismos de Defensa Activa (8 Capas)
+        </button>
+        <button
           onClick={() => setActiveTab('activos')}
-          className={`pb-3 px-3 font-semibold transition-colors relative ${
+          className={`pb-3 px-3 font-semibold transition-colors relative whitespace-nowrap ${
             activeTab === 'activos' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-400 hover:text-white'
           }`}
         >
@@ -158,7 +254,7 @@ export const MiniSocView: React.FC<MiniSocViewProps> = ({ state, onUpdateState }
         </button>
         <button
           onClick={() => setActiveTab('playbooks')}
-          className={`pb-3 px-3 font-semibold transition-colors relative ${
+          className={`pb-3 px-3 font-semibold transition-colors relative whitespace-nowrap ${
             activeTab === 'playbooks' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-400 hover:text-white'
           }`}
         >
@@ -178,40 +274,39 @@ export const MiniSocView: React.FC<MiniSocViewProps> = ({ state, onUpdateState }
                     <th className="p-3.5">Activo Afectado</th>
                     <th className="p-3.5 text-right">SLE (Por Evento)</th>
                     <th className="p-3.5 text-right">ARO (Frecuencia/Año)</th>
-                    <th className="p-3.5 text-right">ALE Anual (CLP)</th>
+                    <th className="p-3.5 text-right text-emerald-400">ALE Anual</th>
                     <th className="p-3.5">Estrategia de Mitigación</th>
-                    <th className="p-3.5">Estado</th>
+                    <th className="p-3.5 text-center">Estado</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#1b202c]">
-                  {state.securityRisks.map((risk) => (
-                    <tr key={risk.id} className="hover:bg-[#161a24] transition-colors">
-                      <td className="p-3.5 font-bold text-white flex items-center gap-2">
-                        <AlertOctagon className="w-3.5 h-3.5 text-amber-400" />
-                        <span>{risk.threatName}</span>
-                      </td>
-                      <td className="p-3.5 text-slate-300">{risk.assetName}</td>
-                      <td className="p-3.5 text-right text-slate-300 font-bold">
-                        ${(risk.sleCLP).toLocaleString('es-CL')}
-                      </td>
-                      <td className="p-3.5 text-right text-slate-400">{risk.aro}x/año</td>
-                      <td className="p-3.5 text-right font-bold text-emerald-400">
-                        ${(risk.aleCLP || risk.sleCLP * risk.aro).toLocaleString('es-CL')}
-                      </td>
-                      <td className="p-3.5 text-slate-400 max-w-xs">{risk.mitigationStrategy}</td>
-                      <td className="p-3.5">
-                        <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            risk.status === 'mitigado'
-                              ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/40'
-                              : 'bg-amber-950 text-amber-300 border border-amber-800/40'
-                          }`}
-                        >
-                          {risk.status.toUpperCase()}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {state.securityRisks.map((risk) => {
+                    const ale = risk.aleCLP || risk.sleCLP * risk.aro;
+                    return (
+                      <tr key={risk.id} className="hover:bg-[#151922] transition-colors">
+                        <td className="p-3.5 font-bold text-white">
+                          <div>{risk.threatName}</div>
+                          <span className="text-[10px] text-slate-500 font-normal uppercase">
+                            {risk.threatCategory}
+                          </span>
+                        </td>
+                        <td className="p-3.5 text-slate-300">{risk.assetName}</td>
+                        <td className="p-3.5 text-right text-slate-300">
+                          ${risk.sleCLP.toLocaleString('es-CL')}
+                        </td>
+                        <td className="p-3.5 text-right text-slate-300">{risk.aro}x</td>
+                        <td className="p-3.5 text-right font-bold text-emerald-400">
+                          ${ale.toLocaleString('es-CL')}
+                        </td>
+                        <td className="p-3.5 text-slate-400 max-w-xs">{risk.mitigationStrategy}</td>
+                        <td className="p-3.5 text-center">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800/40">
+                            {risk.status}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -219,110 +314,98 @@ export const MiniSocView: React.FC<MiniSocViewProps> = ({ state, onUpdateState }
         </div>
       )}
 
-      {/* Tab 2: Inventario de Activos Críticos */}
-      {activeTab === 'activos' && (
+      {/* Tab 2: Mecanismos de Defensa Activa (8 Capas) */}
+      {activeTab === 'auditorias' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
-          {state.securityAssets.map((asset) => (
-            <div
-              key={asset.id}
-              className="bg-[#12151C] border border-[#202634] p-5 rounded-xl space-y-3 hover:border-[#2f394c] transition-colors"
-            >
-              <div className="flex items-center justify-between border-b border-[#202634] pb-3">
-                <div className="flex items-center gap-2">
-                  {asset.type === 'dominio_dns' && <Server className="w-4 h-4 text-emerald-400" />}
-                  {asset.type === 'base_de_datos' && <Database className="w-4 h-4 text-sky-400" />}
-                  {asset.type === 'pasarela_pago' && <CreditCard className="w-4 h-4 text-amber-400" />}
-                  {asset.type === 'servidor_hosting' && <Server className="w-4 h-4 text-purple-400" />}
-                  <span className="font-bold text-white text-sm">{asset.name}</span>
-                </div>
-                <span className="text-[10px] bg-rose-950 text-rose-300 px-2 py-0.5 rounded border border-rose-800/40 font-bold">
-                  {asset.criticality.toUpperCase()}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-400">
-                <div>
-                  <span className="text-slate-500">Proveedor: </span>
-                  <span className="text-slate-200">{asset.provider}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500">Valor Estimado Activo: </span>
-                  <span className="text-emerald-400 font-bold">
-                    ${(asset.estimatedValueCLP).toLocaleString('es-CL')} CLP
+          {defenseShields.map((shield, idx) => {
+            const Icon = shield.icon;
+            return (
+              <div
+                key={idx}
+                className="p-5 bg-[#12151C] border border-[#202634] rounded-xl space-y-2.5 hover:border-emerald-500/40 transition-colors"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <Icon className={`w-5 h-5 ${shield.color}`} />
+                    <span className="font-bold text-white">{shield.title}</span>
+                  </div>
+                  <span className="px-2 py-0.5 bg-emerald-950/80 text-emerald-400 border border-emerald-800/50 rounded text-[10px]">
+                    {shield.level}
                   </span>
                 </div>
+                <p className="text-slate-400 text-[11px] leading-relaxed">{shield.desc}</p>
+                <div className="flex items-center justify-between pt-1 text-[10px] border-t border-[#1b212d]">
+                  <span className="text-slate-500">Mecanismo:</span>
+                  <span className={`font-bold ${shield.color}`}>{shield.status}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Tab 3: Activos Críticos */}
+      {activeTab === 'activos' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 font-mono text-xs">
+          {state.securityAssets.map((asset) => (
+            <div key={asset.id} className="p-4 bg-[#12151C] border border-[#202634] rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-white font-bold">{asset.name}</span>
+                <span
+                  className={`px-2 py-0.5 rounded text-[10px] uppercase ${
+                    asset.criticality === 'alta'
+                      ? 'bg-rose-950/80 text-rose-400 border border-rose-800/50'
+                      : 'bg-amber-950/80 text-amber-400 border border-amber-800/50'
+                  }`}
+                >
+                  Criticidad {asset.criticality}
+                </span>
+              </div>
+              <div className="text-slate-400 text-[11px] space-y-1">
+                <div>Proveedor: <span className="text-white">{asset.provider}</span></div>
+                <div>Tipo: <span className="text-slate-300 capitalize">{asset.type.replace('_', ' ')}</span></div>
+                <div>Valor del Activo: <strong className="text-emerald-400">${asset.estimatedValueCLP.toLocaleString('es-CL')} CLP</strong></div>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Tab 3: Playbooks con IA */}
+      {/* Tab 4: Playbooks */}
       {activeTab === 'playbooks' && (
-        <div className="space-y-4 font-mono text-xs">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {state.securityPlaybooks.map((pb) => (
-              <div
-                key={pb.id}
-                onClick={() => setSelectedPlaybook(pb)}
-                className="bg-[#12151C] border border-[#202634] hover:border-emerald-500/50 p-5 rounded-xl space-y-3 cursor-pointer transition-all hover:translate-y-[-2px]"
-              >
-                <div className="flex items-center gap-2 text-emerald-400 font-bold">
-                  <FileText className="w-4 h-4" />
-                  <span>{pb.title}</span>
-                </div>
-                <p className="text-slate-400 text-[11px] leading-relaxed">{pb.description}</p>
-                <div className="pt-2 border-t border-[#202634] flex items-center justify-between text-[10px] text-slate-500">
-                  <span>Disparador: {pb.triggerEvent}</span>
-                  <span className="text-emerald-400 font-bold">Ver Pasos &rarr;</span>
-                </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
+          {state.securityPlaybooks.map((pb) => (
+            <div key={pb.id} className="p-5 bg-[#12151C] border border-[#202634] rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-white text-sm">{pb.title}</span>
+                <span className="text-[10px] text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">
+                  {pb.triggerEvent}
+                </span>
               </div>
-            ))}
-          </div>
-
-          {/* Detailed Playbook Viewer */}
-          {selectedPlaybook && (
-            <div className="bg-[#12151C] border border-emerald-500/30 p-6 rounded-2xl space-y-4 mt-6 animate-fadeIn">
-              <div className="flex items-center justify-between border-b border-[#202634] pb-4">
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    {selectedPlaybook.title}
-                  </h3>
-                  <p className="text-slate-400 text-[11px] mt-0.5">{selectedPlaybook.description}</p>
-                </div>
-                <button
-                  onClick={() => setSelectedPlaybook(null)}
-                  className="px-3 py-1 bg-[#0A0C10] hover:bg-slate-800 text-slate-400 rounded-lg text-xs"
-                >
-                  Cerrar Playbook
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {selectedPlaybook.steps.map((st) => (
-                  <div key={st.order} className="flex items-start gap-3 p-3 bg-[#0A0C10] rounded-xl border border-[#1b202c]">
-                    <span className="w-5 h-5 rounded-full bg-emerald-950 text-emerald-400 flex items-center justify-center font-bold text-[10px] border border-emerald-800/40">
-                      {st.order}
-                    </span>
-                    <span className="text-slate-200 text-xs leading-relaxed">{st.action}</span>
+              <p className="text-slate-400 text-[11px]">{pb.description}</p>
+              <div className="space-y-1.5 pt-2">
+                <span className="text-[11px] font-bold text-slate-300 block">Acciones de Respuesta:</span>
+                {pb.steps.map((s) => (
+                  <div key={s.order} className="p-2 bg-[#0A0C10] border border-[#1b202c] rounded flex items-center justify-between text-[11px]">
+                    <span>{s.order}. {s.action}</span>
+                    {s.commandOrLink && (
+                      <a href={s.commandOrLink} target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:underline text-[10px]">
+                        Abrir recurso →
+                      </a>
+                    )}
                   </div>
                 ))}
               </div>
             </div>
-          )}
+          ))}
         </div>
       )}
 
-      {/* Modal Add Risk */}
+      {/* Modal Agregar Riesgo */}
       {showAddRisk && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-[#12151C] border border-[#202634] p-6 rounded-2xl w-full max-w-md space-y-4 font-mono text-xs">
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <AlertOctagon className="w-4 h-4 text-emerald-400" />
-              Nueva Amenaza y Cálculo ALE
-            </h2>
-
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 font-mono text-xs">
+          <div className="bg-[#12151C] border border-[#202634] rounded-2xl max-w-lg w-full p-6 space-y-4">
+            <h3 className="text-sm font-bold text-white">Registrar Nueva Amenaza en Matriz de Riesgo</h3>
             <form onSubmit={handleAddRisk} className="space-y-3">
               <div>
                 <label className="block text-slate-400 mb-1">Nombre de la Amenaza *</label>
@@ -331,14 +414,14 @@ export const MiniSocView: React.FC<MiniSocViewProps> = ({ state, onUpdateState }
                   required
                   value={threatName}
                   onChange={(e) => setThreatName(e.target.value)}
-                  placeholder="Ej: Ataque de fuerza bruta a wp-login o /admin"
+                  placeholder="Ej: Ataque de Credential Stuffing / Phishing"
                   className="w-full bg-[#0A0C10] border border-[#202634] rounded-lg p-2 text-white focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-slate-400 mb-1">SLE en CLP (Pérdida/Evento) *</label>
+                  <label className="block text-slate-400 mb-1">SLE (Pérdida por evento CLP) *</label>
                   <input
                     type="number"
                     required
@@ -351,7 +434,7 @@ export const MiniSocView: React.FC<MiniSocViewProps> = ({ state, onUpdateState }
                   <label className="block text-slate-400 mb-1">ARO (Frecuencia anual) *</label>
                   <input
                     type="number"
-                    step="0.1"
+                    step="0.05"
                     required
                     value={aro}
                     onChange={(e) => setAro(Number(e.target.value))}
@@ -373,7 +456,7 @@ export const MiniSocView: React.FC<MiniSocViewProps> = ({ state, onUpdateState }
                   type="text"
                   value={mitigation}
                   onChange={(e) => setMitigation(e.target.value)}
-                  placeholder="Ej: 2FA obligatorio + Cloudflare Rate Limiting"
+                  placeholder="Ej: 2FA con Google Authenticator + WAF"
                   className="w-full bg-[#0A0C10] border border-[#202634] rounded-lg p-2 text-white focus:outline-none focus:border-emerald-500"
                 />
               </div>

@@ -1,40 +1,182 @@
- <!-- LSC Telemetry & Security Agent v1.0 -->
+﻿<!-- LSC Telemetry & Security Agent v2.0 -->
+<!-- Uso: Pegar este bloque antes de </body> en cada sitio web que quieras monitorear -->
 <script>
-  (function(config) {
-    const start = performance.now();
-    window.addEventListener('load', function() {
-      const timing = performance.timing;
-      const payload = {
-        projectId: config.projectId,
-        event: 'heartbeat',
-        url: window.location.href,
-        loadTimeMs: Math.round(performance.now() - start),
-        dnsTimeMs: timing.domainLookupEnd - timing.domainLookupStart,
-        tcpTimeMs: timing.connectEnd - timing.connectStart,
-        sslValid: window.location.protocol === 'https:',
+(function (config) {
+  'use strict';
+
+  // ---------- Estado interno ----------
+  const state = {
+    errorCount: 0,
+    maxErrorsPerSession: config.maxErrorsPerSession ?? 20,
+    seenErrors: new Set(),
+    startTime: performance.now(),
+  };
+
+  // Sampling: si sampleRate < 1, solo una fracción de sesiones reporta
+  const sampleRate = config.sampleRate ?? 1;
+  if (Math.random() > sampleRate) return;
+
+  // ---------- Utilidades ----------
+  function sanitizeUrl(url) {
+    try {
+      const u = new URL(url);
+      if (!config.includeQueryParams) {
+        u.search = '';
+        u.hash = '';
+      }
+      return u.toString();
+    } catch {
+      return 'invalid-url';
+    }
+  }
+
+  function send(payload) {
+    const body = JSON.stringify({
+      project_id: config.projectId,
+      event_type: payload.event || 'telemetry',
+      url: sanitizeUrl(window.location.href),
+      user_agent: navigator.userAgent,
+      metadata: {
+        ...payload,
         timestamp: new Date().toISOString()
-      };
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon(config.endpoint, JSON.stringify(payload));
-      } else {
-        fetch(config.endpoint, { method: 'POST', body: JSON.stringify(payload), mode: 'no-cors' });
       }
     });
 
-    // Captura de errores no controlados y anomalías
-    window.addEventListener('error', function(e) {
-      const errorPayload = {
-        projectId: config.projectId,
-        event: 'security_anomaly',
-        type: 'javascript_error',
-        message: e.message,
-        url: window.location.href,
-        timestamp: new Date().toISOString()
-      };
-      if (navigator.sendBeacon) navigator.sendBeacon(config.endpoint, JSON.stringify(errorPayload));
+    if (navigator.sendBeacon) {
+      const blob = new Blob([body], { type: 'application/json' });
+      const ok = navigator.sendBeacon(config.endpoint, blob);
+      if (!ok) fallbackSend(body);
+    } else {
+      fallbackSend(body);
+    }
+  }
+
+  function fallbackSend(body) {
+    fetch(config.endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': config.apiKey,
+        'Authorization': 'Bearer ' + config.apiKey
+      },
+      body,
+      keepalive: true
+    }).catch(function () {});
+  }
+
+  function handleAnomaly(details) {
+    if (state.errorCount >= state.maxErrorsPerSession) return;
+
+    // Deduplicar anomalías idénticas dentro de la misma sesión
+    const key = details.type + ':' + (details.message || details.blockedUri || details.src || '');
+    if (state.seenErrors.has(key)) return;
+    state.seenErrors.add(key);
+
+    state.errorCount++;
+    send({
+      event: 'security_anomaly',
+      ...details,
     });
-  })({
-    projectId: 'MI_PROYECTO_ID',
-    endpoint: 'https://mi-endpoint-o-webhook.com/api/telemetry'
+  }
+
+  // ---------- 1. Heartbeat de rendimiento (Navigation Timing API v2) ----------
+  window.addEventListener('load', function () {
+    setTimeout(function () {
+      const navEntries = performance.getEntriesByType('navigation');
+      const nav = navEntries && navEntries.length > 0 ? navEntries[0] : null;
+
+      const payload = {
+        event: 'heartbeat',
+        loadTimeMs: Math.round(performance.now() - state.startTime),
+        sslValid: window.location.protocol === 'https:',
+      };
+
+      if (nav) {
+        payload.dnsTimeMs = Math.round(nav.domainLookupEnd - nav.domainLookupStart);
+        payload.tcpTimeMs = Math.round(nav.connectEnd - nav.connectStart);
+        payload.ttfbMs = Math.round(nav.responseStart - nav.requestStart);
+        payload.domContentLoadedMs = Math.round(nav.domContentLoadedEventEnd - nav.startTime);
+      }
+
+      send(payload);
+    }, 0);
   });
+
+  // ---------- 2. Errores de JavaScript ----------
+  window.addEventListener('error', function (e) {
+    handleAnomaly({
+      type: 'javascript_error',
+      message: e.message,
+      source: e.filename,
+      line: e.lineno,
+      col: e.colno,
+    });
+  });
+
+  // ---------- 3. Promesas rechazadas sin manejar ----------
+  window.addEventListener('unhandledrejection', function (e) {
+    handleAnomaly({
+      type: 'unhandled_rejection',
+      message: e.reason && e.reason.message ? e.reason.message : String(e.reason),
+    });
+  });
+
+  // ---------- 4. Violaciones de Content Security Policy ----------
+  document.addEventListener('securitypolicyviolation', function (e) {
+    handleAnomaly({
+      type: 'csp_violation',
+      blockedUri: e.blockedURI,
+      violatedDirective: e.violatedDirective,
+      sourceFile: e.sourceFile,
+      lineNumber: e.lineNumber,
+    });
+  });
+
+  // ---------- 5. Contenido mixto (recursos HTTP en página HTTPS) ----------
+  window.addEventListener('load', function () {
+    if (window.location.protocol !== 'https:') return;
+
+    const insecureResources = performance
+      .getEntriesByType('resource')
+      .filter((r) => r.name.startsWith('http://'));
+
+    if (insecureResources.length > 0) {
+      handleAnomaly({
+        type: 'mixed_content',
+        count: insecureResources.length,
+        urls: insecureResources.slice(0, 5).map((r) => r.name),
+      });
+    }
+  });
+
+  // ---------- 6. Inyección de nodos sospechosos en el DOM (XSS / Skimmers) ----------
+  if (window.MutationObserver) {
+    const observer = new MutationObserver(function (mutations) {
+      mutations.forEach((m) => {
+        m.addedNodes.forEach((node) => {
+          if (node.nodeType !== 1) return;
+          if (node.tagName === 'SCRIPT' || node.tagName === 'IFRAME') {
+            handleAnomaly({
+              type: 'dom_injection',
+              tag: node.tagName,
+              src: node.src || 'inline',
+            });
+          }
+        });
+      });
+    });
+
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+    });
+  }
+})({
+  projectId: 'MI_PROYECTO_ID', // Reemplazar por el slug o nombre de tu proyecto
+  endpoint: 'https://cvfybrtblxzpawnxqsnd.supabase.co/rest/v1/telemetry_logs',
+  apiKey: 'sb_publishable_FaHiwWE7FIHP5-Xr7F6UQg_bJYFphXb',
+  sampleRate: 1,              // 1 = 100% de reportes, 0.2 = 20% para alto tráfico
+  includeQueryParams: false,  // false para anonimizar URLs y proteger privacidad
+  maxErrorsPerSession: 20,    // límite anti-flood
+});
 </script>
