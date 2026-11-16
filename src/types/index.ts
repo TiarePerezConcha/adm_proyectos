@@ -280,6 +280,7 @@ export interface CalendarBooking {
   clientPhone: string;
   company: string;
   serviceInterest: string;
+  message?: string;
   date: string;
   time: string;
   meetUrl: string;
