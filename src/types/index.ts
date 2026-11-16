@@ -455,6 +455,151 @@ export interface SecurityPlaybook {
   steps: { order: number; action: string; commandOrLink?: string }[];
 }
 
+// ============================================================
+// ENTIDADES DE PLANIFICACIÓN, QA, DEVOPS & CIBERSEGURIDAD SOC
+// ============================================================
+
+export interface ProjectTask {
+  id: string;
+  projectId: string;
+  title: string;
+  category: string;
+  completed: boolean;
+  dueDate?: string;
+  priority?: 'alta' | 'media' | 'baja';
+}
+
+export interface ProjectQAChecklist {
+  id: string;
+  projectId: string;
+  seoReady: boolean;
+  responsiveReady: boolean;
+  errorHandlingReady: boolean;
+  securityReady: boolean;
+  backupsReady: boolean;
+  lastAuditDate: string;
+  scorePct: number;
+  notes?: string;
+}
+
+export interface ProjectBackup {
+  id: string;
+  projectId: string;
+  backupName: string;
+  backupType: 'cpanel' | 'mysql' | 'supabase' | 'git_snapshot';
+  backupUrl?: string;
+  backupDate: string;
+  fileSizeMb?: number;
+  verified: boolean;
+}
+
+export interface ProjectErrorLog {
+  id: string | number;
+  projectId: string;
+  errorMessage: string;
+  errorType: 'cors_fetch' | '5xx_server' | 'db_timeout' | 'runtime_js' | 'auth';
+  severity: 'critica' | 'alta' | 'media' | 'baja';
+  resolved: boolean;
+  timestamp: string;
+}
+
+export interface ProjectArchitectureDecision {
+  id: string;
+  projectId: string;
+  title: string;
+  status: 'propuesta' | 'aceptada' | 'descartada' | 'superada';
+  contextRationale: string;
+  decision: string;
+  consequences?: string;
+  decisionDate: string;
+}
+
+export interface ProjectTechStackItem {
+  id: string;
+  projectId: string;
+  technologyName: string;
+  category: 'frontend' | 'backend' | 'database' | 'infra' | 'devops';
+  version?: string;
+  isCritical: boolean;
+}
+
+export interface ProjectDeployment {
+  id: string;
+  projectId: string;
+  commitHash: string;
+  commitMessage?: string;
+  versionDeployed: string;
+  environment: 'produccion' | 'staging' | 'desarrollo';
+  deployedBy: string;
+  deployedAt: string;
+}
+
+export interface ProjectDatabaseStorage {
+  id: string;
+  projectId: string;
+  databaseType: string;
+  connectionStatus: 'online' | 'pausada' | 'desconectada' | 'sin_bbdd';
+  usedMb: number;
+  limitMb: number;
+  quotaPercent: number;
+  isFreeTier: boolean;
+  healthPingMs: number;
+  updatedAt: string;
+}
+
+export interface CisoDiagnostic {
+  id: string;
+  projectId?: string;
+  clientId?: string;
+  securityScore: number;
+  executiveSummary: string;
+  criticalFindings: string[];
+  immediateActions: string[];
+  commercialValue?: string;
+  auditedAt: string;
+}
+
+export interface SecurityThreatFeedItem {
+  id: string;
+  title: string;
+  category: 'fuerza_bruta' | 'inyeccion' | 'phishing' | 'ddos' | 'vulnerabilidad';
+  severity: 'critica' | 'alta' | 'media' | 'informativa';
+  targetProject: string;
+  projectId?: string;
+  description: string;
+  mitigationAction: string;
+  status: 'mitigado' | 'bloqueado' | 'vigilando';
+  country?: string;
+  detectedAt: string;
+}
+
+export interface SecurityCommercialOpportunity {
+  id: string;
+  projectId: string;
+  clientId?: string;
+  quoteId?: string;
+  dealId?: string;
+  planTier: 'esencial' | 'pro' | 'empresarial';
+  monthlyPriceCLP: number;
+  clientEstimatedSalesCLP: number;
+  aleSavingsCLP: number;
+  roiMultiplier: number;
+  contractAnnexTitle: string;
+  status: 'propuesto' | 'contratado' | 'activo';
+  createdAt: string;
+}
+
+export interface DefenseInDepthLayer {
+  id: string;
+  projectId: string;
+  layerNumber: number;
+  shieldName: string;
+  levelName: string;
+  status: string;
+  description: string;
+  isActive: boolean;
+}
+
 export interface UserProfileSecurity {
   email: string;
   passwordHash?: string;

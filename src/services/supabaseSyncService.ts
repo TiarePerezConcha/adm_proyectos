@@ -558,3 +558,153 @@ export async function syncCalendarBookingToSupabase(booking: CalendarBooking) {
     console.warn('Fallo de red Supabase:', err);
   }
 }
+
+// ============================================================
+// 10. SINCRONIZACIÓN DE QA, DEVOPS, ADR & CIBERSEGURIDAD SOC
+// ============================================================
+
+export async function syncProjectTaskToSupabase(task: {
+  id: string;
+  projectId: string;
+  title: string;
+  category?: string;
+  completed: boolean;
+  dueDate?: string;
+  priority?: string;
+}) {
+  try {
+    const { error } = await supabase.from('project_tasks').upsert({
+      id: task.id,
+      project_id: task.projectId,
+      title: task.title,
+      category: task.category || 'General',
+      completed: task.completed,
+      due_date: task.dueDate || null,
+      priority: task.priority || 'media',
+    });
+    if (error) console.warn('Error en Supabase (project_tasks):', error.message);
+  } catch (err) {
+    console.warn('Fallo de red Supabase:', err);
+  }
+}
+
+export async function syncProjectQAChecklistToSupabase(qa: {
+  id: string;
+  projectId: string;
+  seoReady: boolean;
+  responsiveReady: boolean;
+  errorHandlingReady: boolean;
+  securityReady: boolean;
+  backupsReady: boolean;
+  scorePct?: number;
+  notes?: string;
+}) {
+  try {
+    const { error } = await supabase.from('project_qa_checklist').upsert({
+      id: qa.id,
+      project_id: qa.projectId,
+      seo_ready: qa.seoReady,
+      responsive_ready: qa.responsiveReady,
+      error_handling_ready: qa.errorHandlingReady,
+      security_ready: qa.securityReady,
+      backups_ready: qa.backupsReady,
+      score_pct: qa.scorePct ?? 100,
+      notes: qa.notes || null,
+      last_audit_date: new Date().toISOString(),
+    });
+    if (error) console.warn('Error en Supabase (project_qa_checklist):', error.message);
+  } catch (err) {
+    console.warn('Fallo de red Supabase:', err);
+  }
+}
+
+export async function syncProjectBackupToSupabase(bk: {
+  id: string;
+  projectId: string;
+  backupName: string;
+  backupType?: string;
+  backupUrl?: string;
+  backupDate?: string;
+  fileSizeMb?: number;
+  verified?: boolean;
+}) {
+  try {
+    const { error } = await supabase.from('project_backups').upsert({
+      id: bk.id,
+      project_id: bk.projectId,
+      backup_name: bk.backupName,
+      backup_type: bk.backupType || 'completo',
+      backup_url: bk.backupUrl || null,
+      backup_date: bk.backupDate || new Date().toISOString().slice(0, 10),
+      file_size_mb: bk.fileSizeMb || 0,
+      verified: bk.verified ?? true,
+    });
+    if (error) console.warn('Error en Supabase (project_backups):', error.message);
+  } catch (err) {
+    console.warn('Fallo de red Supabase:', err);
+  }
+}
+
+export async function syncCisoDiagnosticToSupabase(diag: {
+  id: string;
+  projectId?: string;
+  clientId?: string;
+  securityScore: number;
+  executiveSummary: string;
+  criticalFindings: string[];
+  immediateActions: string[];
+  commercialValue?: string;
+}) {
+  try {
+    const { error } = await supabase.from('ciso_diagnostics').upsert({
+      id: diag.id,
+      project_id: diag.projectId || null,
+      client_id: diag.clientId || null,
+      security_score: diag.securityScore,
+      executive_summary: diag.executiveSummary,
+      critical_findings: diag.criticalFindings,
+      immediate_actions: diag.immediateActions,
+      commercial_value: diag.commercialValue || null,
+      audited_at: new Date().toISOString(),
+    });
+    if (error) console.warn('Error en Supabase (ciso_diagnostics):', error.message);
+  } catch (err) {
+    console.warn('Fallo de red Supabase:', err);
+  }
+}
+
+export async function syncSecurityCommercialOpportunityToSupabase(opp: {
+  id: string;
+  projectId: string;
+  clientId?: string;
+  quoteId?: string;
+  dealId?: string;
+  planTier: string;
+  monthlyPriceCLP: number;
+  clientEstimatedSalesCLP: number;
+  aleSavingsCLP: number;
+  roiMultiplier: number;
+  contractAnnexTitle?: string;
+  status?: string;
+}) {
+  try {
+    const { error } = await supabase.from('security_commercial_opportunities').upsert({
+      id: opp.id,
+      project_id: opp.projectId,
+      client_id: opp.clientId || null,
+      quote_id: opp.quoteId || null,
+      deal_id: opp.dealId || null,
+      plan_tier: opp.planTier,
+      monthly_price_clp: opp.monthlyPriceCLP,
+      client_estimated_sales_clp: opp.clientEstimatedSalesCLP,
+      ale_savings_clp: opp.aleSavingsCLP,
+      roi_multiplier: opp.roiMultiplier,
+      contract_annex_title: opp.contractAnnexTitle || 'Anexo 2: Servicio Continuo de Ciberseguridad & Gobernanza SOC 24/7',
+      status: opp.status || 'propuesto',
+      created_at: new Date().toISOString(),
+    });
+    if (error) console.warn('Error en Supabase (security_commercial_opportunities):', error.message);
+  } catch (err) {
+    console.warn('Fallo de red Supabase:', err);
+  }
+}

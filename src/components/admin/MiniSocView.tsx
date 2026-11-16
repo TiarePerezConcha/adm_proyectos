@@ -34,6 +34,8 @@ import {
 import { AppState, saveAppState } from '../../utils/storage';
 import { SecurityAsset, SecurityRisk, SecurityPlaybook } from '../../types';
 import { generateWithAI } from '../../services/aiService';
+import { supabase } from '../../services/supabaseClient';
+import { syncCisoDiagnosticToSupabase, syncSecurityCommercialOpportunityToSupabase } from '../../services/supabaseSyncService';
 
 interface MiniSocViewProps {
   state: AppState;
@@ -252,13 +254,33 @@ Genera un diagnóstico técnico riguroso pero claro enfocado en:
           'Para tus clientes (ej: tiendas e-commerce como Conpi o profesionales), este servicio de monitoreo 24/7 + mitigación de caídas puede cotizarse entre $35.000 y $85.000 CLP mensuales, justificando un ahorro superior a $1.500.000 CLP anuales frente a una caída o hackeo.',
       });
 
+      // Sincronizar Diagnóstico del CISO en Supabase
+      syncCisoDiagnosticToSupabase({
+        id: `ciso-diag-${Date.now()}`,
+        projectId: state.monitoredProjects[0]?.id || 'conpi-app',
+        clientId: 'cli-1794802562643',
+        securityScore: 94,
+        executiveSummary: responseText ? responseText.slice(0, 300) : 'Evaluación perimetral sólida con WAF y telemetría activa.',
+        criticalFindings: [
+          'Vulnerabilidad en Formularios Públicos (Riesgo Spam y XSS)',
+          'Riesgo de Disponibilidad en Pasarelas de Pago Webpay / cPanel',
+          'Gestión Preventiva de Certificados SSL y DNS en NIC Chile'
+        ],
+        immediateActions: [
+          'Implementar validación y sanitización estricta en servidor',
+          'Mantener activo el cron keep-alive de base de datos Postgres',
+          'Activar cabeceras HTTP de seguridad HSTS y CSP'
+        ],
+        commercialValue: 'Servicio comercializable de Gobernanza Técnica & SOC 24/7 sugerido en $185.000 CLP/mes.'
+      }).catch(() => {});
+
       setShowAiModal(true);
     } finally {
       setGeneratingAi(false);
     }
   };
 
-  const handleAddRisk = (e: React.FormEvent) => {
+  const handleAddRisk = async (e: React.FormEvent) => {
     e.preventDefault();
     const proj = state.monitoredProjects.find((p) => p.id === selectedProjectId);
     const newRisk: SecurityRisk = {
@@ -282,6 +304,24 @@ Genera un diagnóstico técnico riguroso pero claro enfocado en:
     };
     onUpdateState(newState);
     saveAppState(newState);
+
+    // Sincronizar en Supabase security_ale_matrix
+    try {
+      await supabase.from('security_ale_matrix').upsert({
+        id: newRisk.id,
+        project_id: newRisk.projectId,
+        threat_name: newRisk.threatName,
+        threat_category: newRisk.threatCategory,
+        sle_clp: newRisk.sleCLP,
+        aro: newRisk.aro,
+        ale_clp: newRisk.aleCLP,
+        mitigation_strategy: newRisk.mitigationStrategy,
+        status: newRisk.status,
+      });
+    } catch (err) {
+      console.warn('Error al sincronizar riesgo ALE en Supabase:', err);
+    }
+
     setShowAddRisk(false);
     setThreatName('');
     setMitigation('');
