@@ -21,7 +21,7 @@ import { MaquetasView } from './components/studio/MaquetasView';
 import { ConfiguracionView } from './components/studio/ConfiguracionView';
 
 import { LoginGuard } from './components/auth/LoginGuard';
-import { ALLOWED_EMAIL } from './services/supabaseClient';
+import { ALLOWED_EMAIL, isEmailAuthorized, supabase } from './services/supabaseClient';
 
 export function App() {
   const [state, setState] = useState<AppState>(() => loadAppState());
@@ -35,7 +35,7 @@ export function App() {
     const user = sessionStorage.getItem('lsc_authenticated_user');
     const authTime = sessionStorage.getItem('lsc_auth_timestamp');
     // Caducidad de sesión: 8 horas (28800000 ms)
-    if (user === ALLOWED_EMAIL && authTime) {
+    if (user && isEmailAuthorized(user) && authTime) {
       if (Date.now() - parseInt(authTime, 10) < 28800000) {
         return user;
       }
@@ -50,6 +50,7 @@ export function App() {
   const handleLogout = () => {
     sessionStorage.removeItem('lsc_authenticated_user');
     sessionStorage.removeItem('lsc_auth_timestamp');
+    supabase.auth.signOut().catch(() => {});
     setAuthenticatedUser(null);
   };
 

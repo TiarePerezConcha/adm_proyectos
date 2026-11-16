@@ -1,8 +1,25 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
-import { Shield, Key, Smartphone, Lock, CheckCircle2, AlertCircle, RefreshCw, Copy, Check } from 'lucide-react';
+import {
+  Shield,
+  Key,
+  Smartphone,
+  Lock,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  Copy,
+  Check,
+  Eye,
+  EyeOff,
+  Users,
+  Plus,
+  Trash2,
+  Mail
+} from 'lucide-react';
 import { UserProfileSecurity } from '../../types';
 import { generateBase32Secret, generateTOTPCode, verifyTOTPCode, hashPassword } from '../../services/authCrypto';
+import { getAuthorizedEmails, saveAuthorizedEmails, ALLOWED_EMAIL } from '../../services/supabaseClient';
 
 interface SecuritySettingsSectionProps {
   security?: UserProfileSecurity;
@@ -26,8 +43,15 @@ export const SecuritySettingsSection: React.FC<SecuritySettingsSectionProps> = (
   // Estados de cambio de contraseña
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [masterPin, setMasterPin] = useState(currentSec.masterPin || '2026');
   const [passMsg, setPassMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Estados de lista de correos autorizados (Whitelist)
+  const [authorizedEmails, setAuthorizedEmails] = useState<string[]>(() => getAuthorizedEmails());
+  const [newEmailInput, setNewEmailInput] = useState('');
+  const [emailMsg, setEmailMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Estados de 2FA / Google Authenticator
   const [is2FAEnabled, setIs2FAEnabled] = useState(currentSec.twoFactorEnabled);
@@ -136,6 +160,40 @@ export const SecuritySettingsSection: React.FC<SecuritySettingsSectionProps> = (
     setTimeout(() => setPassMsg(null), 3500);
   };
 
+  // Handlers para Lista de Correos Autorizados
+  const handleAddEmail = (e: React.FormEvent) => {
+    e.preventDefault();
+    setEmailMsg(null);
+    const clean = newEmailInput.trim().toLowerCase();
+    if (!clean || !clean.includes('@') || !clean.includes('.')) {
+      setEmailMsg({ type: 'error', text: 'Por favor ingresa un correo electrónico válido.' });
+      return;
+    }
+    if (authorizedEmails.map((e) => e.toLowerCase()).includes(clean)) {
+      setEmailMsg({ type: 'error', text: 'Este correo ya figura en la lista autorizada.' });
+      return;
+    }
+    const updated = saveAuthorizedEmails([...authorizedEmails, clean]);
+    setAuthorizedEmails(updated);
+    setNewEmailInput('');
+    setEmailMsg({ type: 'success', text: `Correo "${clean}" autorizado para iniciar sesión exitosamente.` });
+    setTimeout(() => setEmailMsg(null), 3500);
+  };
+
+  const handleRemoveEmail = (targetEmail: string) => {
+    if (targetEmail.toLowerCase() === ALLOWED_EMAIL.toLowerCase()) {
+      setEmailMsg({ type: 'error', text: 'No es posible revocar el acceso del correo propietario principal.' });
+      return;
+    }
+    if (confirm(`¿Segura que deseas revocar el acceso para "${targetEmail}"?`)) {
+      const filtered = authorizedEmails.filter((e) => e.toLowerCase() !== targetEmail.toLowerCase());
+      const updated = saveAuthorizedEmails(filtered);
+      setAuthorizedEmails(updated);
+      setEmailMsg({ type: 'success', text: `Acceso revocado para "${targetEmail}".` });
+      setTimeout(() => setEmailMsg(null), 3500);
+    }
+  };
+
   const copySecret = () => {
     navigator.clipboard.writeText(tempSecret);
     setCopiedKey(true);
@@ -189,24 +247,44 @@ export const SecuritySettingsSection: React.FC<SecuritySettingsSectionProps> = (
 
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Nueva Contraseña (Opcional)</label>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="••••••••••••"
-              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs focus:ring-1 focus:ring-rose-400"
-            />
+            <div className="relative">
+              <input
+                type={showNewPassword ? 'text' : 'password'}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="••••••••••••"
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 pr-9 text-xs focus:ring-1 focus:ring-rose-400"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPassword(!showNewPassword)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
+                title={showNewPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+              >
+                {showNewPassword ? <EyeOff className="w-3.5 h-3.5 text-amber-500" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
           </div>
 
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Confirmar Nueva Contraseña</label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="••••••••••••"
-              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs focus:ring-1 focus:ring-rose-400"
-            />
+            <div className="relative">
+              <input
+                type={showConfirmPassword ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="••••••••••••"
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 pr-9 text-xs focus:ring-1 focus:ring-rose-400"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
+                title={showConfirmPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+              >
+                {showConfirmPassword ? <EyeOff className="w-3.5 h-3.5 text-amber-500" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
           </div>
 
           <button
@@ -337,6 +415,102 @@ export const SecuritySettingsSection: React.FC<SecuritySettingsSectionProps> = (
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Sección 3: Lista de Correos Autorizados (Whitelist de Acceso) */}
+      <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-5 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/60 pb-3">
+          <div className="flex items-center gap-2 font-bold text-slate-800 text-xs">
+            <Users className="w-4 h-4 text-emerald-600" />
+            <span>Lista de Correos Autorizados para Acceso (Whitelist)</span>
+          </div>
+          <span className="text-[11px] font-mono text-slate-500">
+            {authorizedEmails.length} cuenta{authorizedEmails.length === 1 ? '' : 's'} autorizada{authorizedEmails.length === 1 ? '' : 's'}
+          </span>
+        </div>
+
+        <p className="text-[11px] text-slate-600 leading-relaxed">
+          Capa de Blindaje 1: Solo los correos presentes en esta lista pueden acceder al sistema, ya sea mediante{' '}
+          <strong>Google OAuth (acceso externo)</strong> o con contraseña y PIN maestro. Cualquier correo no autorizado
+          será rechazado automáticamente.
+        </p>
+
+        {emailMsg && (
+          <div
+            className={`p-2.5 rounded-lg flex items-center gap-2 text-[11px] ${
+              emailMsg.type === 'success'
+                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                : 'bg-rose-50 text-rose-700 border border-rose-200'
+            }`}
+          >
+            {emailMsg.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 shrink-0" />
+            )}
+            <span>{emailMsg.text}</span>
+          </div>
+        )}
+
+        {/* Formulario para agregar nuevo correo */}
+        <form onSubmit={handleAddEmail} className="flex gap-2">
+          <div className="relative flex-1">
+            <Mail className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="email"
+              required
+              placeholder="nuevo.usuario@gmail.com"
+              value={newEmailInput}
+              onChange={(e) => setNewEmailInput(e.target.value)}
+              className="w-full bg-white border border-slate-300 rounded-lg pl-8 pr-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            />
+          </div>
+          <button
+            type="submit"
+            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white font-semibold rounded-lg text-xs transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Autorizar Correo</span>
+          </button>
+        </form>
+
+        {/* Lista de Correos Registrados */}
+        <div className="space-y-2 pt-1">
+          {authorizedEmails.map((em, idx) => {
+            const isOwner = em.toLowerCase() === ALLOWED_EMAIL.toLowerCase();
+            return (
+              <div
+                key={idx}
+                className="flex items-center justify-between p-2.5 bg-white border border-slate-200 rounded-lg text-xs"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Mail className={`w-3.5 h-3.5 ${isOwner ? 'text-rose-500' : 'text-slate-400'}`} />
+                  <span className="font-mono text-slate-800 font-medium">{em}</span>
+                  {isOwner ? (
+                    <span className="px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded text-[9px] font-bold uppercase">
+                      Propietario Principal
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded text-[9px] font-bold uppercase">
+                      Autorizado
+                    </span>
+                  )}
+                </div>
+
+                {!isOwner && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveEmail(em)}
+                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition cursor-pointer"
+                    title="Revocar acceso a este correo"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

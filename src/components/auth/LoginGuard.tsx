@@ -1,6 +1,26 @@
-﻿import React, { useState } from 'react';
-import { ShieldCheck, Lock, Mail, KeyRound, AlertTriangle, ArrowRight, Smartphone } from 'lucide-react';
-import { ALLOWED_EMAIL, sanitizeInput } from '../../services/supabaseClient';
+import React, { useState, useEffect } from 'react';
+import {
+  ShieldCheck,
+  Lock,
+  Mail,
+  KeyRound,
+  AlertTriangle,
+  ArrowRight,
+  Smartphone,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  X,
+  RotateCcw,
+  Users
+} from 'lucide-react';
+import {
+  supabase,
+  ALLOWED_EMAIL,
+  getAuthorizedEmails,
+  isEmailAuthorized,
+  sanitizeInput
+} from '../../services/supabaseClient';
 import { verifyTOTPCode, hashPassword } from '../../services/authCrypto';
 
 interface LoginGuardProps {
@@ -11,16 +31,110 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('');
   const [credentialInput, setCredentialInput] = useState(''); // PIN o Contraseña
   const [twoFactorCode, setTwoFactorCode] = useState('');
-  const [supabaseAnonKey, setSupabaseAnonKey] = useState(() => localStorage.getItem('lsc_supabase_key') || 'sb_publishable_FaHiwWE7FIHP5-Xr7F6UQg_bJYFphXb');
+  const [supabaseAnonKey, setSupabaseAnonKey] = useState(
+    () => localStorage.getItem('lsc_supabase_key') || 'sb_publishable_FaHiwWE7FIHP5-Xr7F6UQg_bJYFphXb'
+  );
   const [errorMsg, setErrorMsg] = useState('');
   const [attempts, setAttempts] = useState(0);
   const [isLocked, setIsLocked] = useState(false);
   const [step, setStep] = useState<'credentials' | '2fa'>('credentials');
 
+  // Estado del botón ojo para ver / ocultar contraseña
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Estados de inicio de sesión con Google (OAuth)
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+
+  // Estados del modal de recuperación de contraseña
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [recoveryMsg, setRecoveryMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isRecovering, setIsRecovering] = useState(false);
+
+  // Estado para ver la lista de correos autorizados
+  const [showAuthListModal, setShowAuthListModal] = useState(false);
+  const [authorizedEmailsList, setAuthorizedEmailsList] = useState<string[]>(() => getAuthorizedEmails());
+
   // Estado de 2FA configurado en localStorage
   const is2FAEnabled = localStorage.getItem('lsc_2fa_enabled') === 'true';
   const totpSecret = localStorage.getItem('lsc_2fa_secret') || '';
   const backupCodes: string[] = JSON.parse(localStorage.getItem('lsc_2fa_backups') || '[]');
+
+  // 1. Escuchar sesión externa de Supabase (OAuth Redirect con Google)
+  useEffect(() => {
+    let isMounted = true;
+
+    const checkExistingSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user?.email && isMounted) {
+          const oauthEmail = session.user.email.toLowerCase().trim();
+          if (isEmailAuthorized(oauthEmail)) {
+            completeLogin(oauthEmail);
+          } else {
+            await supabase.auth.signOut();
+            setErrorMsg(`⛔ Acceso Denegado: La cuenta Google "${oauthEmail}" no figura en la lista de correos autorizados por LSC Management.`);
+          }
+        }
+      } catch (err) {
+        console.warn('Error verificando sesión inicial OAuth:', err);
+      }
+    };
+
+    checkExistingSession();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user?.email && isMounted) {
+        const oauthEmail = session.user.email.toLowerCase().trim();
+        if (isEmailAuthorized(oauthEmail)) {
+          completeLogin(oauthEmail);
+        } else {
+          await supabase.auth.signOut();
+          setErrorMsg(`⛔ Acceso Denegado: La cuenta Google "${oauthEmail}" no figura en la lista de correos autorizados por LSC Management.`);
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      authListener?.subscription?.unsubscribe();
+    };
+  }, []);
+
+  // Actualizar lista de correos autorizados al abrir modal
+  const refreshAuthorizedList = () => {
+    setAuthorizedEmailsList(getAuthorizedEmails());
+  };
+
+  // Inicio de sesión externo con Google (OAuth)
+  const handleGoogleSignIn = async () => {
+    setErrorMsg('');
+    setIsGoogleLoading(true);
+
+    try {
+      const redirectUrl = window.location.origin + window.location.pathname;
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectUrl,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'select_account',
+          },
+        },
+      });
+
+      if (error) {
+        setErrorMsg(
+          `Google OAuth: ${error.message}. Si el proveedor Google aún no está configurado en Supabase Cloud, puedes ingresar usando tu correo autorizado con PIN o contraseña.`
+        );
+      }
+    } catch (err: any) {
+      setErrorMsg(`Error al conectar con Google: ${err?.message || 'Fallo de conexión'}`);
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
 
   // Paso 1: Verificación de Correo y Contraseña/PIN
   const handleVerifyCredentials = async (e: React.FormEvent) => {
@@ -42,9 +156,9 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
       return;
     }
 
-    // CAPA 1: Validación estricta de cuenta Gmail
-    if (cleanEmail !== ALLOWED_EMAIL) {
-      handleFailAttempt(`Acceso denegado: El correo "${cleanEmail}" no está autorizado.`);
+    // CAPA 1: Validación estricta contra la Lista de Correos Autorizados (Whitelist)
+    if (!isEmailAuthorized(cleanEmail)) {
+      handleFailAttempt(`Acceso denegado: El correo "${cleanEmail}" no figura en la lista de cuentas autorizadas.`);
       return;
     }
 
@@ -92,16 +206,15 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
     // 1. Validar código dinámico TOTP
     const isTotpValid = await verifyTOTPCode(totpSecret, clean2FA);
     if (isTotpValid) {
-      completeLogin(ALLOWED_EMAIL, supabaseAnonKey);
+      completeLogin(email || ALLOWED_EMAIL, supabaseAnonKey);
       return;
     }
 
     // 2. Validar código de respaldo de emergencia
     if (backupCodes.includes(clean2FA)) {
-      // Consumir código de respaldo usado
       const newBackups = backupCodes.filter((c) => c !== clean2FA);
       localStorage.setItem('lsc_2fa_backups', JSON.stringify(newBackups));
-      completeLogin(ALLOWED_EMAIL, supabaseAnonKey);
+      completeLogin(email || ALLOWED_EMAIL, supabaseAnonKey);
       return;
     }
 
@@ -130,6 +243,46 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
     onLoginSuccess(userEmail);
   };
 
+  // Procedimiento de Recuperación de Contraseña / PIN Maestro
+  const handleResetMasterPin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setRecoveryMsg(null);
+    setIsRecovering(true);
+
+    const targetEmail = sanitizeInput(recoveryEmail).toLowerCase().trim();
+
+    if (!targetEmail) {
+      setRecoveryMsg({ type: 'error', text: 'Por favor ingresa tu correo electrónico autorizado.' });
+      setIsRecovering(false);
+      return;
+    }
+
+    // Verificar si el correo pertenece a la lista autorizada
+    if (!isEmailAuthorized(targetEmail)) {
+      setRecoveryMsg({
+        type: 'error',
+        text: `Acceso denegado: El correo "${targetEmail}" no pertenece a la lista de usuarios autorizados.`,
+      });
+      setIsRecovering(false);
+      return;
+    }
+
+    // Ejecutar restablecimiento de emergencia a PIN 2026
+    localStorage.removeItem('lsc_password_hash');
+    localStorage.setItem('lsc_master_pin', '2026');
+
+    // Intentar también solicitud formal en Supabase si está disponible
+    supabase.auth.resetPasswordForEmail(targetEmail).catch(() => {});
+
+    setRecoveryMsg({
+      type: 'success',
+      text: '✅ ¡Acceso restaurado con éxito! Se ha restablecido el PIN maestro al valor predeterminado: 2026. Ya puedes iniciar sesión.',
+    });
+    setEmail(targetEmail);
+    setCredentialInput('2026');
+    setIsRecovering(false);
+  };
+
   return (
     <div className="min-h-screen bg-[#07090E] flex items-center justify-center p-4 relative overflow-hidden font-sans">
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] bg-rose-950/20 rounded-full blur-[120px] pointer-events-none" />
@@ -144,7 +297,9 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">Acceso Privado Blindado</h1>
           <p className="text-xs text-gray-400 mt-1">
-            {step === 'credentials' ? 'Autenticación de Acceso • LSC Management' : 'Verificación en Dos Pasos (2FA) Requerida'}
+            {step === 'credentials'
+              ? 'Autenticación de Acceso • LSC Management'
+              : 'Verificación en Dos Pasos (2FA) Requerida'}
           </p>
         </div>
 
@@ -152,14 +307,18 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
         <div className="grid grid-cols-3 gap-2 mb-6 text-center">
           <div className="p-2 bg-gray-900/80 border border-gray-800 rounded-lg">
             <span className="text-[10px] font-mono block text-emerald-400">CORREO</span>
-            <span className="text-[10px] text-gray-300">Exclusivo</span>
+            <span className="text-[10px] text-gray-300">Lista Autorizada</span>
           </div>
           <div className="p-2 bg-gray-900/80 border border-gray-800 rounded-lg">
             <span className="text-[10px] font-mono block text-amber-400">CLAVE / PIN</span>
             <span className="text-[10px] text-gray-300">Cifrado SHA</span>
           </div>
           <div className="p-2 bg-gray-900/80 border border-gray-800 rounded-lg">
-            <span className={`text-[10px] font-mono block ${is2FAEnabled ? 'text-emerald-400 font-bold' : 'text-slate-500'}`}>
+            <span
+              className={`text-[10px] font-mono block ${
+                is2FAEnabled ? 'text-emerald-400 font-bold' : 'text-slate-500'
+              }`}
+            >
               2FA TOTP
             </span>
             <span className="text-[10px] text-gray-300">{is2FAEnabled ? 'Google Auth' : 'Opcional'}</span>
@@ -175,49 +334,139 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
 
         {/* PASO 1: Email y Clave / PIN */}
         {step === 'credentials' ? (
-          <form onSubmit={handleVerifyCredentials} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-300 mb-1.5 flex items-center gap-1.5">
-                <Mail className="w-3.5 h-3.5 text-rose-400" /> Correo Gmail Propietario
-              </label>
-              <input
-                type="email"
-                required
-                placeholder="tiare.perezconcha@gmail.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={isLocked}
-                className="w-full bg-[#161B22] border border-gray-700 focus:border-rose-500 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none transition-colors"
-              />
-              <span className="text-[11px] text-gray-500 mt-1 block">
-                Cuenta autorizada: <strong>tiare.perezconcha@gmail.com</strong>
-              </span>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-300 mb-1.5 flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5 text-amber-400" /> Contraseña o PIN Maestro
-              </label>
-              <input
-                type="password"
-                required
-                placeholder="Ingresa tu Contraseña o PIN (Predeterminado: 2026)"
-                value={credentialInput}
-                onChange={(e) => setCredentialInput(e.target.value)}
-                disabled={isLocked}
-                className="w-full bg-[#161B22] border border-gray-700 focus:border-rose-500 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none transition-colors"
-              />
-            </div>
-
+          <div className="space-y-4">
+            {/* Botón de Acceso Externo con Google */}
             <button
-              type="submit"
-              disabled={isLocked}
-              className="w-full mt-2 py-3 bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 active:scale-[0.99] text-white font-medium text-sm rounded-xl transition shadow-lg shadow-rose-950/60 flex items-center justify-center gap-2"
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={isLocked || isGoogleLoading}
+              className="w-full py-2.5 px-4 bg-[#161B22] hover:bg-[#1C2128] border border-gray-700 hover:border-gray-500 active:scale-[0.99] text-white font-medium text-xs rounded-xl transition flex items-center justify-center gap-2.5 shadow-sm cursor-pointer disabled:opacity-50"
             >
-              <span>{is2FAEnabled ? 'Continuar a Verificación 2FA' : 'Verificar Identidad y Desbloquear'}</span>
-              <ArrowRight className="w-4 h-4" />
+              {isGoogleLoading ? (
+                <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+              ) : (
+                <svg className="w-4 h-4" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
+              )}
+              <span>{isGoogleLoading ? 'Conectando con Google...' : 'Continuar con Google (OAuth)'}</span>
             </button>
-          </form>
+
+            <div className="flex items-center gap-3 my-2">
+              <div className="h-px bg-gray-800 flex-1" />
+              <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider">
+                O con credenciales autorizadas
+              </span>
+              <div className="h-px bg-gray-800 flex-1" />
+            </div>
+
+            <form onSubmit={handleVerifyCredentials} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-rose-400" /> Correo Gmail Propietario / Autorizado
+                  </span>
+                  {authorizedEmailsList.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        refreshAuthorizedList();
+                        setShowAuthListModal(true);
+                      }}
+                      className="text-[10px] text-emerald-400 hover:text-emerald-300 underline font-mono cursor-pointer"
+                    >
+                      {authorizedEmailsList.length} correos autorizados
+                    </button>
+                  )}
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="tiare.perezconcha@gmail.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={isLocked}
+                  className="w-full bg-[#161B22] border border-gray-700 focus:border-rose-500 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none transition-colors"
+                />
+                <span className="text-[11px] text-gray-500 mt-1 block">
+                  Cuentas con acceso:{' '}
+                  <strong className="text-gray-300">{authorizedEmailsList[0]}</strong>
+                  {authorizedEmailsList.length > 1 && ` y ${authorizedEmailsList.length - 1} más`}
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1.5 flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-amber-400" /> Contraseña o PIN Maestro
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    placeholder="Ingresa tu Contraseña o PIN (Predeterminado: 2026)"
+                    value={credentialInput}
+                    onChange={(e) => setCredentialInput(e.target.value)}
+                    disabled={isLocked}
+                    className="w-full bg-[#161B22] border border-gray-700 focus:border-rose-500 rounded-xl pl-3.5 pr-10 py-2.5 text-sm text-white focus:outline-none transition-colors"
+                  />
+                  {/* Botón Ojo para Ver / Ocultar Contraseña */}
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    tabIndex={-1}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors p-1 rounded-md cursor-pointer"
+                    title={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-4 h-4 text-amber-400" />
+                    ) : (
+                      <Eye className="w-4 h-4 text-gray-400 hover:text-gray-200" />
+                    )}
+                  </button>
+                </div>
+
+                {/* Enlace para Recuperar Contraseña / PIN */}
+                <div className="flex items-center justify-between text-xs font-mono pt-1.5">
+                  <span className="text-[10px] text-gray-500">PIN por defecto: 2026</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRecoveryEmail(email || authorizedEmailsList[0]);
+                      setRecoveryMsg(null);
+                      setShowRecoveryModal(true);
+                    }}
+                    className="text-[11px] text-rose-400 hover:text-rose-300 underline transition-colors cursor-pointer"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLocked}
+                className="w-full mt-2 py-3 bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 active:scale-[0.99] text-white font-medium text-sm rounded-xl transition shadow-lg shadow-rose-950/60 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <span>{is2FAEnabled ? 'Continuar a Verificación 2FA' : 'Verificar Identidad y Desbloquear'}</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </form>
+          </div>
         ) : (
           /* PASO 2: Código 2FA de Google Authenticator */
           <form onSubmit={handleVerify2FA} className="space-y-4">
@@ -246,7 +495,7 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
 
             <button
               type="submit"
-              className="w-full py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 active:scale-[0.99] text-white font-medium text-sm rounded-xl transition shadow-lg shadow-indigo-950/60 flex items-center justify-center gap-2"
+              className="w-full py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 active:scale-[0.99] text-white font-medium text-sm rounded-xl transition shadow-lg shadow-indigo-950/60 flex items-center justify-center gap-2 cursor-pointer"
             >
               <span>Confirmar Código 2FA</span>
               <ArrowRight className="w-4 h-4" />
@@ -254,8 +503,12 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
 
             <button
               type="button"
-              onClick={() => { setStep('credentials'); setTwoFactorCode(''); setErrorMsg(''); }}
-              className="w-full text-center text-xs text-gray-400 hover:text-white pt-1"
+              onClick={() => {
+                setStep('credentials');
+                setTwoFactorCode('');
+                setErrorMsg('');
+              }}
+              className="w-full text-center text-xs text-gray-400 hover:text-white pt-1 cursor-pointer"
             >
               ← Volver al paso anterior
             </button>
@@ -268,6 +521,143 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
           </p>
         </div>
       </div>
+
+      {/* MODAL 1: RECUPERACIÓN DE CONTRASEÑA Y PIN MAESTRO */}
+      {showRecoveryModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0E1218] border border-gray-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative space-y-4">
+            <button
+              onClick={() => setShowRecoveryModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white p-1 rounded-lg cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 border-b border-gray-800 pb-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-950/60 border border-rose-800/50 flex items-center justify-center text-rose-400">
+                <KeyRound className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Recuperación Segura de Acceso</h3>
+                <p className="text-xs text-gray-400">Restaura tu contraseña o PIN maestro de emergencia</p>
+              </div>
+            </div>
+
+            {recoveryMsg && (
+              <div
+                className={`p-3 rounded-lg text-xs flex items-start gap-2 ${
+                  recoveryMsg.type === 'success'
+                    ? 'bg-emerald-950/40 text-emerald-300 border border-emerald-800/60'
+                    : 'bg-rose-950/40 text-rose-300 border border-rose-800/60'
+                }`}
+              >
+                {recoveryMsg.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+                )}
+                <span>{recoveryMsg.text}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleResetMasterPin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">
+                  Correo Electrónico de la Cuenta Autorizada
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="tiare.perezconcha@gmail.com"
+                  value={recoveryEmail}
+                  onChange={(e) => setRecoveryEmail(e.target.value)}
+                  className="w-full bg-[#161B22] border border-gray-700 focus:border-rose-500 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none"
+                />
+                <span className="text-[10px] text-gray-500 mt-1 block">
+                  El sistema validará que este correo esté registrado en la lista de correos autorizados.
+                </span>
+              </div>
+
+              <div className="p-3 bg-amber-950/20 border border-amber-800/40 rounded-xl space-y-1">
+                <p className="text-[11px] font-semibold text-amber-300 flex items-center gap-1.5">
+                  <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                  Protocolo de Restauración de Emergencia
+                </p>
+                <p className="text-[10px] text-amber-200/80 leading-relaxed">
+                  Al confirmar tu identidad, se eliminará cualquier contraseña personalizada olvidada y se reactivará el{' '}
+                  <strong>PIN Maestro de fábrica: 2026</strong> para que puedas ingresar de inmediato.
+                </p>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowRecoveryModal(false)}
+                  className="flex-1 py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold rounded-xl transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isRecovering}
+                  className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1.5 shadow-md shadow-rose-950 cursor-pointer disabled:opacity-50"
+                >
+                  {isRecovering ? 'Restableciendo...' : 'Restablecer Acceso'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: LISTA DE CORREOS AUTORIZADOS */}
+      {showAuthListModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0E1218] border border-gray-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl relative space-y-4">
+            <button
+              onClick={() => setShowAuthListModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white p-1 rounded-lg cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2 border-b border-gray-800 pb-3">
+              <Users className="w-5 h-5 text-emerald-400" />
+              <div>
+                <h3 className="text-sm font-bold text-white">Cuentas Autorizadas (Whitelist)</h3>
+                <p className="text-[10px] text-gray-400">Correos con permiso de acceso concedido</p>
+              </div>
+            </div>
+
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {authorizedEmailsList.map((em, idx) => (
+                <div
+                  key={idx}
+                  className="p-2.5 bg-[#161B22] border border-gray-800 rounded-lg flex items-center justify-between text-xs text-white"
+                >
+                  <span className="truncate">{em}</span>
+                  {em.toLowerCase() === ALLOWED_EMAIL.toLowerCase() && (
+                    <span className="text-[9px] bg-rose-950 text-rose-300 border border-rose-800/50 px-2 py-0.5 rounded font-mono font-bold">
+                      Propietario
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <p className="text-[10px] text-gray-500 leading-relaxed font-mono">
+              💡 Puedes agregar o modificar correos autorizados adicionales desde la sección <strong>Studio &gt; Configuración &gt; Seguridad</strong> una vez que inicies sesión.
+            </p>
+
+            <button
+              onClick={() => setShowAuthListModal(false)}
+              className="w-full py-2 bg-gray-800 hover:bg-gray-700 text-white text-xs font-semibold rounded-xl transition cursor-pointer"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
