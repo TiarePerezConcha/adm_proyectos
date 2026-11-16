@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Secrets
+client_secret*.json
+conpi-app*.json
+*serviceaccount*.json
+*.env*

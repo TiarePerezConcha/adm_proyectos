@@ -130,14 +130,85 @@ export const SEED_DESIGN_SYSTEM: DesignSystem = {
   updatedAt: new Date().toISOString().slice(0, 10),
 };
 
-// 7. SEO Keywords: Solo búsquedas reales
-export const SEED_SEO_KEYWORDS: SEOKeyword[] = [];
+// 7. SEO Keywords: Datos reales sincronizados de Google Search Console API (sc-domain:conpi.cl)
+import gscLiveCache from './gsc_live_cache.json';
+export const SEED_SEO_KEYWORDS: SEOKeyword[] = (
+  Array.isArray(gscLiveCache)
+    ? gscLiveCache
+    : (gscLiveCache as any)?.periods?.['28d']?.queries || []
+) as SEOKeyword[];
 
 // 8. Bookings de Google Calendar: Inicialmente vacío, se puebla con agendamientos reales
 export const SEED_CALENDAR: CalendarBooking[] = [];
 
 // 9. Proyectos Reales Monitoreados con la API de Telemetría inyectada
 export const SEED_MONITORED_PROJECTS: MonitoredProject[] = [
+  {
+    id: 'conpi-app',
+    name: 'CONPI - Insumos & Repuestos de Carnicería (conpi.cl)',
+    clientName: 'CONPI Chile (conpi.cl)',
+    url: 'https://conpi.cl',
+    status: 'online',
+    uptimePercentage: 100.0,
+    avgResponseTimeMs: 220,
+    sslValid: true,
+    sslExpiresDays: 365,
+    lastHeartbeat: 'Verificado en Vivo (200 OK)',
+    supabaseKeepAliveEnabled: false,
+    lastSupabasePing: 'Alojado en cPanel TecnoInver (MySQL)',
+    recentErrors: [],
+    gscProperty: 'sc-domain:conpi.cl',
+    gscConnected: true,
+    stack: ['React 18', 'Vite', 'Tailwind CSS', 'REST API / MySQL'],
+    queues: ['Worker Background Cron'],
+    databaseType: 'mysql_cpanel',
+    databaseStatus: 'online',
+    dbStorageQuota: {
+      usedMB: 142.5,
+      limitMB: 2048,
+      percent: 6.9,
+      isFreeTier: false,
+    },
+    commitHash: '92c473f',
+    commitDate: '2026-11-16 09:10',
+    supportWarrantyDays: 90,
+    pendingTasks: [
+      { id: 't1', title: 'Comprimir catálogo de imágenes con WebP', completed: true, category: 'Rendimiento' },
+      { id: 't2', title: 'Auditoría mensual de Core Web Vitals en móvil', completed: false, category: 'SEO' },
+    ],
+    backupLinks: [
+      { name: 'Respaldo Completo cPanel TecnoInver (Base de datos MySQL & Archivos)', url: 'https://conpi.cl/cpanel', date: '2026-11-10' },
+    ],
+    dbHealthPingMs: 28,
+    daysWithoutPause: 0,
+    lifecycleStage: 'produccion',
+    versionDeployed: 'v2.4.1 (Producción Activa)',
+    qaChecklist: {
+      seo: true,
+      responsive: true,
+      errorHandling: true,
+      security: true,
+      backups: true,
+    },
+    infraVault: {
+      domainRegistrar: 'NIC Chile (.cl)',
+      hostingProvider: 'cPanel TecnoInver & Cloudflare SSL',
+      costCategory: 'pago_anual',
+      estimatedCostCLP: 45000,
+      renewalDate: '2025-10-15',
+    },
+    deepLinks: {
+      github: 'https://github.com/TiarePerezConcha/conpi',
+      searchConsole: 'https://search.google.com/search-console?resource_id=sc-domain:conpi.cl',
+      cpanel: 'https://conpi.cl/cpanel',
+    },
+    notes: [
+      'Plataforma e-commerce y catálogo técnico de repuestos para carnicerías industriales.',
+      'Sincronización activa con Google Search Console API mediante cuenta de servicio oficial.',
+      'Alojado en cPanel TecnoInver con base de datos MySQL.',
+    ],
+    isPersonalProject: false,
+  },
   {
     id: 'adm-proyectos',
     name: 'Plataforma Administrador de Proyectos',
@@ -152,11 +223,69 @@ export const SEED_MONITORED_PROJECTS: MonitoredProject[] = [
     supabaseKeepAliveEnabled: true,
     lastSupabasePing: 'Conectado a cvfybrtblxzpawnxqsnd',
     recentErrors: [],
+    stack: ['React', 'TypeScript', 'Vite', 'Tailwind CSS', 'Supabase Cloud'],
+    queues: ['Keep-Alive Cron 3d', 'Google Calendar Sync Worker'],
+    databaseType: 'supabase_postgres',
+    databaseStatus: 'online',
+    dbStorageQuota: {
+      usedMB: 0.12,
+      limitMB: 500,
+      percent: 0.024,
+      isFreeTier: true,
+    },
+    commitHash: '88fa8e7',
+    commitDate: '2026-11-16 09:12',
+    supportWarrantyDays: 365,
+    pendingTasks: [
+      { id: 't4', title: 'Sincronizar Service Account con Search Console para otros dominios', completed: false, category: 'SEO' },
+      { id: 't5', title: 'Verificar cuota de tokens en Gemini Free Tier', completed: true, category: 'IA' },
+    ],
+    backupLinks: [
+      { name: 'Backup Supabase telemetry_logs', url: 'https://cvfybrtblxzpawnxqsnd.supabase.co', date: '2026-11-16' },
+      { name: 'GitHub Repo Snapshot (Branch main)', url: 'https://github.com/TiarePerezConcha/adm_proyectos', date: '2026-11-16' },
+    ],
+    dbHealthPingMs: 38,
+    daysWithoutPause: 0,
+    lifecycleStage: 'produccion',
+    versionDeployed: 'v1.2.0 Operations & Security',
+    qaChecklist: {
+      seo: true,
+      responsive: true,
+      errorHandling: true,
+      security: true,
+      backups: true,
+    },
+    infraVault: {
+      domainRegistrar: 'GitHub Pages (Gratuito)',
+      hostingProvider: 'GitHub Cloud / Supabase Cloud Free Tier',
+      costCategory: 'gratis_tier',
+      estimatedCostCLP: 0,
+      renewalDate: 'Indefinido (Tier Gratuito)',
+    },
+    deepLinks: {
+      github: 'https://github.com/TiarePerezConcha/adm_proyectos',
+      supabase: 'https://supabase.com/dashboard/project/cvfybrtblxzpawnxqsnd',
+    },
+    notes: [
+      'Panel central de operaciones LSC: CRM, SEO Search Console, Google Calendar y Telemetría.',
+      'Aloja el módulo Keep-Alive central que audita y previene pausas en la base de datos.',
+    ],
+    isPersonalProject: true,
+    aiUsage: [
+      {
+        provider: 'Google AI Studio',
+        model: 'Gemini 1.5 Pro / Flash',
+        tokensUsed: 12500,
+        tokensLimit: 500000,
+        renewalDate: 'Diaria (Tier Gratis)',
+        costUSD: 0.0,
+      },
+    ],
   },
   {
     id: 'curriculumpage-tiare',
     name: 'Portfolio & CV Tiare Pérez',
-    clientName: 'Tiare Pérez Concha',
+    clientName: 'Tiare Pérez Concha (Marca Personal)',
     url: 'https://tiareperezconcha.github.io/curriculum/tiare/',
     status: 'online',
     uptimePercentage: 100.0,
@@ -164,9 +293,41 @@ export const SEED_MONITORED_PROJECTS: MonitoredProject[] = [
     sslValid: true,
     sslExpiresDays: 365,
     lastHeartbeat: 'Verificado en Vivo (200 OK)',
-    supabaseKeepAliveEnabled: true,
-    lastSupabasePing: 'Conectado a cvfybrtblxzpawnxqsnd',
+    supabaseKeepAliveEnabled: false,
+    lastSupabasePing: '100% Frontend Estático (Sin BBDD)',
     recentErrors: [],
+    stack: ['HTML5 Moderno', 'CSS3 Vanilla', 'JavaScript', 'GitHub Pages'],
+    databaseType: 'static_none',
+    databaseStatus: 'sin_bbdd',
+    commitHash: '202611a',
+    commitDate: '2026-11-14',
+    pendingTasks: [
+      { id: 't6', title: 'Actualizar certificaciones y nuevos proyectos en CV', completed: true, category: 'Contenido' },
+    ],
+    lifecycleStage: 'produccion',
+    versionDeployed: 'v2.0 (Online)',
+    qaChecklist: {
+      seo: true,
+      responsive: true,
+      errorHandling: true,
+      security: true,
+      backups: true,
+    },
+    infraVault: {
+      domainRegistrar: 'GitHub Pages',
+      hostingProvider: 'GitHub CDN Global',
+      costCategory: 'gratis_tier',
+      estimatedCostCLP: 0,
+      renewalDate: 'Permanente',
+    },
+    deepLinks: {
+      github: 'https://github.com/TiarePerezConcha/curriculum',
+    },
+    notes: [
+      'Sitio estático de presentación profesional y portafolio de proyectos.',
+      'No utiliza base de datos ni requiere Keep-Alive.',
+    ],
+    isPersonalProject: true,
   },
   {
     id: 'curriculumpage-fernando',
@@ -179,9 +340,35 @@ export const SEED_MONITORED_PROJECTS: MonitoredProject[] = [
     sslValid: true,
     sslExpiresDays: 365,
     lastHeartbeat: 'Verificado en Vivo (200 OK)',
-    supabaseKeepAliveEnabled: true,
-    lastSupabasePing: 'Conectado a cvfybrtblxzpawnxqsnd',
+    supabaseKeepAliveEnabled: false,
+    lastSupabasePing: '100% Frontend Estático (Sin BBDD)',
     recentErrors: [],
+    stack: ['HTML5', 'CSS3', 'JavaScript Vanilla', 'GitHub Pages'],
+    databaseType: 'static_none',
+    lifecycleStage: 'produccion',
+    versionDeployed: 'v1.0 (Online)',
+    qaChecklist: {
+      seo: true,
+      responsive: true,
+      errorHandling: true,
+      security: true,
+      backups: true,
+    },
+    infraVault: {
+      domainRegistrar: 'GitHub Pages',
+      hostingProvider: 'GitHub CDN Global',
+      costCategory: 'gratis_tier',
+      estimatedCostCLP: 0,
+      renewalDate: 'Permanente',
+    },
+    deepLinks: {
+      github: 'https://github.com/TiarePerezConcha/FERNANDO_ALEJANDRO_FIGUEROA_CERDA',
+    },
+    notes: [
+      'Portfolio profesional desarrollado para Fernando Alejandro Figueroa Cerda.',
+      'Sitio 100% estático frontend sin conexión a BBDD.',
+    ],
+    isPersonalProject: false,
   },
 ];
 

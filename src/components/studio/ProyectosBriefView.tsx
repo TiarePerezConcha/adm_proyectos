@@ -192,11 +192,11 @@ export const ProyectosBriefView: React.FC<ProyectosBriefViewProps> = ({
             </div>
           </div>
 
-          {/* Card Luis Salas */}
+          {/* Card Tiare Perez */}
           <div className="bg-white border border-slate-200 hover:border-slate-400 p-6 rounded-2xl space-y-4 shadow-sm transition-all">
             <div className="flex items-start justify-between">
               <div>
-                <h3 className="font-bold text-lg font-serif text-slate-900">Luis Salas Cortés Dev</h3>
+                <h3 className="font-bold text-lg font-serif text-slate-900">Tiare Pérez Concha Portfolio</h3>
                 <span className="text-xs text-slate-500">Plataforma Web Personal & Studio</span>
               </div>
               <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2.5 py-1 rounded-full border border-emerald-200">
@@ -224,7 +224,7 @@ export const ProyectosBriefView: React.FC<ProyectosBriefViewProps> = ({
                 </button>
               </div>
 
-              <span className="text-xs text-slate-400 font-mono">luissalascortes.dev</span>
+              <span className="text-xs text-slate-400 font-mono">tiareperezconcha.github.io</span>
             </div>
           </div>
         </div>

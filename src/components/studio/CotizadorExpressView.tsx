@@ -226,7 +226,7 @@ export const CotizadorExpressView: React.FC<CotizadorExpressViewProps> = ({
   const handleSendEmail = (quote: Quote) => {
     const subject = encodeURIComponent(`Cotización Formal: ${quote.projectTitle} - ${quote.quoteNumber}`);
     const body = encodeURIComponent(
-      `Estimado/a ${quote.clientName},\n\nEs un gusto saludarte. Adjunto la propuesta comercial formal para tu proyecto "${quote.projectTitle}".\n\nResumen de propuesta:\n- Inversión Total: $${quote.totalCLP.toLocaleString('es-CL')} CLP (${quote.taxDocument === 'factura' ? '+ IVA' : 'boleta de honorarios'}).\n- Condición comercial: ${quote.paymentConditionDetails}\n- Plazo estimado: ${quote.deliveryTimeDays} días hábiles organizados en metodología ágil de entregas por Sprints.\n\nQuedo atento a tus comentarios para coordinar el inicio del Sprint 1.\n\nSaludos cordiales,\nLuis Salas Cortés\nDesarrollo Web & Studio`
+      `Estimado/a ${quote.clientName},\n\nEs un gusto saludarte. Adjunto la propuesta comercial formal para tu proyecto "${quote.projectTitle}".\n\nResumen de propuesta:\n- Inversión Total: $${quote.totalCLP.toLocaleString('es-CL')} CLP (${quote.taxDocument === 'factura' ? '+ IVA' : 'boleta de honorarios'}).\n- Condición comercial: ${quote.paymentConditionDetails}\n- Plazo estimado: ${quote.deliveryTimeDays} días hábiles organizados en metodología ágil de entregas por Sprints.\n\nQuedo atenta a tus comentarios para coordinar el inicio del Sprint 1.\n\nSaludos cordiales,\nTiare Pérez Concha\nDesarrollo Web & Studio`
     );
     window.location.href = `mailto:${quote.clientEmail}?subject=${subject}&body=${body}`;
   };
@@ -373,9 +373,9 @@ export const CotizadorExpressView: React.FC<CotizadorExpressViewProps> = ({
             {/* Header Document */}
             <div className="flex justify-between items-start border-b border-slate-200 pb-6">
               <div>
-                <span className="font-serif text-2xl font-bold text-slate-900 block">LUIS SALAS CORTÉS</span>
+                <span className="font-serif text-2xl font-bold text-slate-900 block">TIARE PÉREZ CONCHA</span>
                 <span className="text-xs text-slate-500 font-mono">Desarrollo Web &bull; UX/UI &bull; E-Commerce</span>
-                <span className="text-xs text-slate-400 block mt-1">contacto@luissalascortes.dev &bull; Chile</span>
+                <span className="text-xs text-slate-400 block mt-1">tiare.perezconcha@gmail.com &bull; Chile</span>
               </div>
               <div className="text-right">
                 <span className="text-xs font-mono font-bold text-slate-400 block uppercase">Cotización Comercial</span>

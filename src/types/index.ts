@@ -1,6 +1,6 @@
 export type Environment = 'admin' | 'studio';
 
-export type AdminTab = 'metricas' | 'seo' | 'calendar' | 'telemetria' | 'soc' | 'faqs';
+export type AdminTab = 'metricas' | 'seo' | 'calendar' | 'telemetria' | 'soc' | 'faqs' | 'configuracion';
 
 export type StudioTab =
   | 'evaluacion'
@@ -286,6 +286,8 @@ export interface CalendarBooking {
   meetUrl: string;
   status: 'confirmada' | 'completada' | 'cancelada';
   crmDealCreated: boolean;
+  googleEventId?: string;
+  rescheduledAt?: string;
 }
 
 export interface MonitoredProject {
@@ -302,6 +304,66 @@ export interface MonitoredProject {
   supabaseKeepAliveEnabled: boolean;
   lastSupabasePing?: string;
   recentErrors: { message: string; timestamp: string }[];
+  gscProperty?: string;
+  gscConnected?: boolean;
+  stack?: string[];
+  databaseType?: 'supabase_postgres' | 'firebase_firestore' | 'static_none' | 'mysql_cpanel' | 'azure_sql' | 'local_storage' | 'other';
+  databaseStatus?: 'online' | 'pausada' | 'desconectada' | 'sin_bbdd';
+  dbStorageQuota?: {
+    usedMB: number;
+    limitMB: number;
+    percent: number;
+    isFreeTier: boolean;
+  };
+  queues?: string[];
+  commitHash?: string;
+  commitDate?: string;
+  supportWarrantyDays?: number;
+  pendingTasks?: { id: string; title: string; completed: boolean; category: string }[];
+  backupLinks?: { name: string; url: string; date: string }[];
+  dbHealthPingMs?: number;
+  daysWithoutPause?: number;
+  lifecycleStage?: 'produccion' | 'desarrollo' | 'mantenimiento' | 'pausado';
+  versionDeployed?: string;
+  qaChecklist?: {
+    seo: boolean;
+    responsive: boolean;
+    errorHandling: boolean;
+    security: boolean;
+    backups: boolean;
+  };
+  infraVault?: {
+    domainRegistrar?: string;
+    hostingProvider?: string;
+    costCategory?: 'gratis_tier' | 'pago_anual' | 'pago_mensual';
+    estimatedCostCLP?: number;
+    renewalDate?: string;
+  };
+  deepLinks?: {
+    github?: string;
+    supabase?: string;
+    cpanel?: string;
+    searchConsole?: string;
+    figma?: string;
+  };
+  notes?: string[];
+  isPersonalProject?: boolean;
+  clientBilling?: {
+    clientName: string;
+    totalQuoteCLP: number;
+    paidCLP: number;
+    pendingCLP: number;
+    taxDocument: 'factura' | 'boleta' | 'exento';
+    status: 'al_dia' | 'pago_pendiente' | 'finalizado';
+  };
+  aiUsage?: {
+    provider: string;
+    model: string;
+    tokensUsed: number;
+    tokensLimit: number;
+    renewalDate: string;
+    costUSD: number;
+  }[];
 }
 
 export interface SecurityAsset {
@@ -349,13 +411,38 @@ export interface UserProfileSecurity {
   lastLogin?: string;
 }
 
+export interface AIUsageMetrics {
+  totalTokensUsed: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalCalls: number;
+  providerCalls: Record<string, number>;
+  dlpBytesScanned: number; // Google DLP gratis hasta 1 GB/mes (1,073,741,824 bytes)
+  translationCharsUsed: number; // Google Cloud Translation gratis hasta 500.000 caracteres/mes
+  lastUsedTimestamp?: string;
+}
+
 export interface AppSettings {
   deepseekApiKey: string;
   geminiApiKey: string;
   groqApiKey: string;
   mistralApiKey: string;
   openrouterApiKey: string;
-  preferredModel: 'auto' | 'gemini' | 'deepseek' | 'groq' | 'mistral' | 'openrouter' | 'offline';
+  sambanovaApiKey?: string;
+  githubModelsApiKey?: string;
+  openaiApiKey?: string;
+  googleCloudApiKey?: string;
+  preferredModel:
+    | 'auto'
+    | 'gemini'
+    | 'groq'
+    | 'sambanova'
+    | 'openrouter'
+    | 'github'
+    | 'openai'
+    | 'deepseek'
+    | 'mistral'
+    | 'offline';
   supabaseUrl?: string;
   supabaseAnonKey?: string;
   supabaseKeepAliveIntervalDays: number;

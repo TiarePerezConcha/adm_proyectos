@@ -29,6 +29,15 @@ export function App() {
   const [adminTab, setAdminTab] = useState<AdminTab>('metricas');
   const [studioTab, setStudioTab] = useState<StudioTab>('evaluacion');
   const [quoteTargetClientId, setQuoteTargetClientId] = useState<string | undefined>(undefined);
+  const mainRef = React.useRef<HTMLElement>(null);
+
+  // Asegurar que cada cambio de pestaña o vista comience siempre arriba desde el título
+  useEffect(() => {
+    if (mainRef.current) {
+      mainRef.current.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    }
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [currentEnv, adminTab, studioTab]);
 
   // Estado de Autenticación de 3 Capas
   const [authenticatedUser, setAuthenticatedUser] = useState<string | null>(() => {
@@ -84,11 +93,11 @@ export function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto min-h-screen">
+      <main ref={mainRef} className="flex-1 overflow-y-auto min-h-screen">
         {currentEnv === 'admin' ? (
           <div className="bg-[#0A0C10] min-h-screen">
             {adminTab === 'metricas' && <MetricasView state={state} />}
-            {adminTab === 'seo' && <SeoRankingView state={state} />}
+            {adminTab === 'seo' && <SeoRankingView state={state} onUpdateState={setState} />}
             {adminTab === 'calendar' && (
               <GoogleCalendarView state={state} onUpdateState={setState} />
             )}
@@ -97,6 +106,9 @@ export function App() {
             )}
             {adminTab === 'soc' && <MiniSocView state={state} onUpdateState={setState} />}
             {adminTab === 'faqs' && <FaqsView state={state} />}
+            {adminTab === 'configuracion' && (
+              <ConfiguracionView state={state} onUpdateState={setState} />
+            )}
           </div>
         ) : (
           <div className="bg-[#FAFBFD] min-h-screen">

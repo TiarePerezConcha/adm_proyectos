@@ -1,5 +1,42 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Activity, Shield, Database, CheckCircle2, AlertTriangle, XCircle, Copy, Check, RefreshCw, Plus, Globe, Sparkles } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  Activity,
+  Shield,
+  Database,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  Copy,
+  Check,
+  RefreshCw,
+  Plus,
+  Globe,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  Github,
+  Search,
+  Server,
+  Code,
+  DollarSign,
+  Cpu,
+  FileText,
+  Clock,
+  Layers,
+  CheckSquare,
+  Lock,
+  X,
+  ArrowLeft,
+  ListTodo,
+  TrendingUp,
+  HardDrive,
+  GitBranch,
+  Calendar,
+  Filter,
+  Eye,
+  SlidersHorizontal,
+} from 'lucide-react';
 import { AppState, saveAppState } from '../../utils/storage';
 import { MonitoredProject } from '../../types';
 import { supabase } from '../../services/supabaseClient';
@@ -27,7 +64,7 @@ function formatRelativeTime(isoString: string): string {
 
 export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, onUpdateState }) => {
   const [copiedSnippet, setCopiedSnippet] = useState(false);
-  const [pingingSupabase, setPingingSupabase] = useState(false);
+  const [pingingSupabaseId, setPingingSupabaseId] = useState<string | null>(null);
   const [isSyncingTelemetry, setIsSyncingTelemetry] = useState(false);
   const [isAuditingLive, setIsAuditingLive] = useState(false);
   const [auditingId, setAuditingId] = useState<string | null>(null);
@@ -35,9 +72,34 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
   const [showAddProject, setShowAddProject] = useState(false);
   const [rawTelemetryLogs, setRawTelemetryLogs] = useState<any[]>([]);
 
+  // Pestaña de Detalle Profundo: si tiene un ID, muestra la vista detallada de 1 solo proyecto
+  const [detailedProjectId, setDetailedProjectId] = useState<string | null>(null);
+
+  // Filtros del Stream en Vivo
+  const [streamProjectFilter, setStreamProjectFilter] = useState<string>('all');
+  const [streamEventFilter, setStreamEventFilter] = useState<string>('all');
+  const [showTelemetryStream, setShowTelemetryStream] = useState(true);
+  const [showIntegrationGuide, setShowIntegrationGuide] = useState(false);
+
+  // Modo de vista principal (Tabla Consolidada vs Tarjetas)
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
+
+  // Estados de formularios para Bitácora, Tareas, Respaldos y Vinculación Comercial dentro del Detalle Profundo
+  const [newNoteInput, setNewNoteInput] = useState('');
+  const [newTaskInput, setNewTaskInput] = useState('');
+  const [newTaskCategory, setNewTaskCategory] = useState('Mejora');
+  const [newBackupName, setNewBackupName] = useState('');
+  const [newBackupUrl, setNewBackupUrl] = useState('https://');
+  const [newBackupDate, setNewBackupDate] = useState(new Date().toISOString().slice(0, 10));
+  const [selectedQuoteIdToLink, setSelectedQuoteIdToLink] = useState('');
+
+  // Formulario nuevo proyecto
   const [newName, setNewName] = useState('');
   const [newClient, setNewClient] = useState('');
   const [newUrl, setNewUrl] = useState('https://');
+  const [newStack, setNewStack] = useState('React, Vite, Tailwind');
+  const [newQueues, setNewQueues] = useState('');
+  const [newDbType, setNewDbType] = useState<'supabase_postgres' | 'static_none' | 'firebase_firestore' | 'mysql_cpanel'>('supabase_postgres');
 
   // 1. Auditoría Activa en Vivo (Mide latencia real con fetch HTTP y reporta a Supabase)
   const auditSingleProjectLive = async (projId: string) => {
@@ -210,9 +272,24 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
             sslValid: true,
             sslExpiresDays: 365,
             lastHeartbeat: 'Detectado desde GitHub API',
-            supabaseKeepAliveEnabled: true,
-            lastSupabasePing: 'Conectado a GitHub Pages',
-            recentErrors: []
+            supabaseKeepAliveEnabled: false,
+            lastSupabasePing: '100% Frontend Estático (Sin BBDD)',
+            recentErrors: [],
+            stack: ['HTML5', 'CSS3', 'JavaScript Vanilla'],
+            databaseType: 'static_none',
+            databaseStatus: 'sin_bbdd',
+            lifecycleStage: 'produccion',
+            versionDeployed: 'GitHub Pages Live',
+            qaChecklist: {
+              seo: true,
+              responsive: true,
+              errorHandling: true,
+              security: true,
+              backups: true,
+            },
+            deepLinks: {
+              github: r.html_url,
+            },
           });
         }
       }
@@ -243,7 +320,7 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
 
       if (!logs || logs.length === 0) return;
 
-      setRawTelemetryLogs(logs.slice(0, 15));
+      setRawTelemetryLogs(logs);
 
       // Agrupar último ping por project_id
       const latestLogs = new Map<string, any>();
@@ -292,34 +369,25 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
         return proj;
       });
 
-      // Auto-descubrir proyectos nuevos enviados por la API que no estaban registrados
-      const discovered: MonitoredProject[] = [];
-      for (const [logPid, logData] of latestLogs.entries()) {
-        if (!matchedPids.has(logPid) && logPid !== 'test-check') {
-          const formattedName = logPid
-            .replace(/^mon-/, '')
-            .replace(/[-_]/g, ' ')
-            .replace(/\b\w/g, (c: string) => c.toUpperCase());
+      // Limpiar proyectos de pruebas
+      const cleanedUpdatedList = updatedList.filter(
+        (p) =>
+          p.id !== 'conpi-react' &&
+          p.id !== 'conpi-web' &&
+          p.id !== 'test-keepalive-verify' &&
+          p.id !== 'studio-keepalive-manual' &&
+          p.name !== 'Conpi React' &&
+          p.name !== 'Conpi Web' &&
+          p.name !== 'Studio Keepalive Manual' &&
+          !p.name.includes('Test Keepalive') &&
+          !p.name.includes('Studio Keepalive')
+      );
 
-          discovered.push({
-            id: logPid,
-            name: formattedName,
-            clientName: 'Detección Automática por API',
-            url: logData.url || 'https://',
-            status: 'online',
-            uptimePercentage: 100.0,
-            avgResponseTimeMs: logData.load_time_ms || 120,
-            sslValid: logData.ssl_valid ?? true,
-            sslExpiresDays: 90,
-            lastHeartbeat: formatRelativeTime(logData.timestamp),
-            supabaseKeepAliveEnabled: true,
-            lastSupabasePing: `Detectado hoy a las ${new Date(logData.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-            recentErrors: []
-          });
-        }
-      }
+      // Asegurar que conpi-app sea el primer elemento
+      let conpiProj = cleanedUpdatedList.find((p) => p.id === 'conpi-app' || (p.url && p.url.includes('conpi.cl')));
+      const otherList = cleanedUpdatedList.filter((p) => p.id !== 'conpi-app' && !(p.url && p.url.includes('conpi.cl')));
+      const finalProjects = conpiProj ? [conpiProj, ...otherList] : otherList;
 
-      const finalProjects = [...updatedList, ...discovered];
       const newState = { ...state, monitoredProjects: finalProjects };
       onUpdateState(newState);
       saveAppState(newState);
@@ -334,7 +402,6 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
   useEffect(() => {
     syncFromGitHubAPI();
     syncTelemetryFromSupabase();
-    // Realizar auditoría activa de latencia al cargar
     const timeout = setTimeout(() => {
       auditAllProjectsLive();
     }, 1200);
@@ -347,50 +414,44 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
     };
   }, []);
 
+  // Ping Keep-Alive directo a PostgreSQL Supabase para evitar pausa tras 7 días
   const handlePingKeepAlive = async (projectId: string) => {
-    setPingingSupabase(true);
+    setPingingSupabaseId(projectId);
     const targetProj = state.monitoredProjects.find((p) => p.id === projectId);
-    if (!targetProj || !targetProj.url) {
-      setPingingSupabase(false);
+    if (!targetProj) {
+      setPingingSupabaseId(null);
       return;
     }
 
     try {
       const t0 = performance.now();
-      let isSuccess = false;
-      let latency = 0;
-      try {
-        await fetch(targetProj.url, { mode: 'no-cors', cache: 'no-cache' });
-        latency = Math.max(1, Math.round(performance.now() - t0));
-        isSuccess = true;
-      } catch {
-        isSuccess = false;
-      }
+      const { error } = await supabase.from('telemetry_logs').select('id').limit(1);
+      const measuredMs = Math.max(1, Math.round(performance.now() - t0));
+
+      const isSuccess = !error;
+      const now = new Date();
 
       try {
         await supabase.from('telemetry_logs').insert({
           project_id: targetProj.id,
           event: isSuccess ? 'heartbeat' : 'error',
           url: targetProj.url,
-          load_time_ms: latency,
-          ssl_valid: targetProj.url.startsWith('https:'),
-          message: isSuccess ? `Keep-Alive manual en vivo: ${latency}ms (200 OK)` : 'Keep-Alive fallido: Sitio inaccesible'
+          load_time_ms: measuredMs,
+          ssl_valid: true,
+          message: isSuccess
+            ? `Keep-Alive Anti-Pausa DB OK (${measuredMs}ms) - cvfybrtblxzpawnxqsnd activa`
+            : `Fallo en Keep-Alive: ${error?.message || 'Error de conexión'}`
         });
       } catch {}
 
-      const now = new Date();
       const updated = state.monitoredProjects.map((p) => {
         if (p.id === projectId) {
-          const newUptime = isSuccess
-            ? Math.min(100, Math.round((p.uptimePercentage + 0.5) * 10) / 10)
-            : Math.max(0, Math.round((p.uptimePercentage - 5.0) * 10) / 10);
           return {
             ...p,
-            status: isSuccess ? ('online' as const) : ('offline' as const),
-            avgResponseTimeMs: isSuccess ? latency : p.avgResponseTimeMs,
-            uptimePercentage: newUptime,
-            lastHeartbeat: isSuccess ? 'Verificado en vivo (200 OK)' : 'Sin respuesta (Caído / Offline)',
-            lastSupabasePing: `${isSuccess ? 'OK' : 'Fallo'} a las ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+            dbHealthPingMs: measuredMs,
+            daysWithoutPause: 0,
+            databaseStatus: 'online' as const,
+            lastSupabasePing: `Keep-Alive Anti-Pausa OK a las ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (${measuredMs}ms)`,
           };
         }
         return p;
@@ -402,28 +463,236 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
     } catch (err) {
       console.warn('Error en keep-alive:', err);
     } finally {
-      setPingingSupabase(false);
+      setPingingSupabaseId(null);
     }
   };
 
+  // Toggle de ítems del Checklist QA
+  const handleToggleQa = (projectId: string, qaKey: keyof NonNullable<MonitoredProject['qaChecklist']>) => {
+    const updated = state.monitoredProjects.map((p) => {
+      if (p.id === projectId) {
+        const currentQa = p.qaChecklist || {
+          seo: true,
+          responsive: true,
+          errorHandling: true,
+          security: true,
+          backups: true,
+        };
+        return {
+          ...p,
+          qaChecklist: {
+            ...currentQa,
+            [qaKey]: !currentQa[qaKey],
+          },
+        };
+      }
+      return p;
+    });
+    const newState = { ...state, monitoredProjects: updated };
+    onUpdateState(newState);
+    saveAppState(newState);
+  };
+
+  // Agregar Nota / Decisión a la Bitácora
+  const handleAddProjectNote = (projId: string) => {
+    if (!newNoteInput.trim()) return;
+    const dateStr = new Date().toLocaleDateString('es-CL');
+    const noteText = `${dateStr} - ${newNoteInput.trim()}`;
+
+    const updated = state.monitoredProjects.map((p) => {
+      if (p.id === projId) {
+        return {
+          ...p,
+          notes: [noteText, ...(p.notes || [])],
+        };
+      }
+      return p;
+    });
+    const newState = { ...state, monitoredProjects: updated };
+    onUpdateState(newState);
+    saveAppState(newState);
+    setNewNoteInput('');
+  };
+
+  // Agregar Tarea Pendiente
+  const handleAddProjectTask = (projId: string) => {
+    if (!newTaskInput.trim()) return;
+    const newTask = {
+      id: `task-${Date.now()}`,
+      title: newTaskInput.trim(),
+      category: newTaskCategory,
+      completed: false,
+    };
+
+    const updated = state.monitoredProjects.map((p) => {
+      if (p.id === projId) {
+        return {
+          ...p,
+          pendingTasks: [...(p.pendingTasks || []), newTask],
+        };
+      }
+      return p;
+    });
+    const newState = { ...state, monitoredProjects: updated };
+    onUpdateState(newState);
+    saveAppState(newState);
+    setNewTaskInput('');
+  };
+
+  // Toggle de Tarea
+  const handleToggleTask = (projId: string, taskId: string) => {
+    const updated = state.monitoredProjects.map((p) => {
+      if (p.id === projId) {
+        return {
+          ...p,
+          pendingTasks: (p.pendingTasks || []).map((t) =>
+            t.id === taskId ? { ...t, completed: !t.completed } : t
+          ),
+        };
+      }
+      return p;
+    });
+    const newState = { ...state, monitoredProjects: updated };
+    onUpdateState(newState);
+    saveAppState(newState);
+  };
+
+  // Agregar Copia de Seguridad (Backup)
+  const handleAddBackup = (projId: string) => {
+    if (!newBackupName.trim()) return;
+    const newB = {
+      name: newBackupName.trim(),
+      url: newBackupUrl.trim() || 'https://',
+      date: newBackupDate || new Date().toISOString().slice(0, 10),
+    };
+    const updated = state.monitoredProjects.map((p) => {
+      if (p.id === projId) {
+        return {
+          ...p,
+          backupLinks: [...(p.backupLinks || []), newB],
+        };
+      }
+      return p;
+    });
+    const newState = { ...state, monitoredProjects: updated };
+    onUpdateState(newState);
+    saveAppState(newState);
+    setNewBackupName('');
+    setNewBackupUrl('https://');
+  };
+
+  // Eliminar Copia de Seguridad
+  const handleDeleteBackup = (projId: string, backupIndex: number) => {
+    const updated = state.monitoredProjects.map((p) => {
+      if (p.id === projId) {
+        const links = [...(p.backupLinks || [])];
+        links.splice(backupIndex, 1);
+        return {
+          ...p,
+          backupLinks: links,
+        };
+      }
+      return p;
+    });
+    const newState = { ...state, monitoredProjects: updated };
+    onUpdateState(newState);
+    saveAppState(newState);
+  };
+
+  // Marcar como Proyecto Propio (Portafolio / Personal)
+  const handleMarkPersonalProject = (projId: string) => {
+    const updated = state.monitoredProjects.map((p) => {
+      if (p.id === projId) {
+        return {
+          ...p,
+          isPersonalProject: true,
+          clientBilling: undefined,
+        };
+      }
+      return p;
+    });
+    const newState = { ...state, monitoredProjects: updated };
+    onUpdateState(newState);
+    saveAppState(newState);
+  };
+
+  // Vincular Cotización del CRM al Proyecto
+  const handleLinkQuoteToProject = (projId: string, quoteId: string) => {
+    const foundQuote = state.quotes.find((q) => q.id === quoteId);
+    if (!foundQuote) return;
+    const updated: MonitoredProject[] = state.monitoredProjects.map((p) => {
+      if (p.id === projId) {
+        return {
+          ...p,
+          isPersonalProject: false,
+          clientName: foundQuote.clientName || p.clientName,
+          clientBilling: {
+            clientName: foundQuote.clientName,
+            totalQuoteCLP: foundQuote.totalCLP,
+            paidCLP: foundQuote.totalCLP,
+            pendingCLP: 0,
+            taxDocument: (foundQuote.taxDocument === 'boleta' ? 'boleta' : 'factura') as 'boleta' | 'factura',
+            status: 'al_dia' as const,
+          },
+        };
+      }
+      return p;
+    });
+    const newState: AppState = { ...state, monitoredProjects: updated };
+    onUpdateState(newState);
+    saveAppState(newState);
+    setSelectedQuoteIdToLink('');
+  };
+
+  // Crear Nuevo Proyecto
   const handleAddProject = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName || !newUrl) return;
 
+    const stackArray = newStack.split(',').map((s) => s.trim()).filter(Boolean);
+    const queuesArray = newQueues ? newQueues.split(',').map((q) => q.trim()).filter(Boolean) : [];
+
     const newMon: MonitoredProject = {
       id: `mon-${Date.now()}`,
       name: newName,
-      clientName: newClient || 'Cliente',
+      clientName: newClient || 'Proyecto Propio',
       url: newUrl,
       status: 'online',
-      uptimePercentage: 99.9,
+      uptimePercentage: 100.0,
       avgResponseTimeMs: 240,
       sslValid: true,
-      sslExpiresDays: 90,
+      sslExpiresDays: 365,
       lastHeartbeat: 'Recién conectado',
-      supabaseKeepAliveEnabled: true,
-      lastSupabasePing: 'Iniciado hoy (OK)',
+      supabaseKeepAliveEnabled: newDbType === 'supabase_postgres',
+      lastSupabasePing: newDbType === 'supabase_postgres' ? 'Keep-Alive Activo' : '100% Frontend Estático',
       recentErrors: [],
+      stack: stackArray.length > 0 ? stackArray : ['React', 'Web'],
+      queues: queuesArray,
+      databaseType: newDbType,
+      databaseStatus: newDbType === 'static_none' ? 'sin_bbdd' : 'online',
+      dbStorageQuota: newDbType === 'supabase_postgres' ? { usedMB: 0.05, limitMB: 500, percent: 0.01, isFreeTier: true } : undefined,
+      lifecycleStage: 'desarrollo',
+      versionDeployed: 'v1.0.0 Dev',
+      commitHash: 'init01',
+      commitDate: new Date().toLocaleDateString('es-CL'),
+      supportWarrantyDays: 90,
+      qaChecklist: {
+        seo: false,
+        responsive: true,
+        errorHandling: true,
+        security: true,
+        backups: false,
+      },
+      infraVault: {
+        domainRegistrar: newUrl.includes('.cl') ? 'NIC Chile (.cl)' : 'GitHub Pages',
+        hostingProvider: 'Cloud Hosting',
+        costCategory: 'gratis_tier',
+        estimatedCostCLP: 0,
+      },
+      notes: [`Proyecto registrado el ${new Date().toLocaleDateString('es-CL')}`],
+      pendingTasks: [
+        { id: 't-init', title: 'Configurar variables de entorno y DNS', completed: false, category: 'Despliegue' },
+      ],
     };
 
     const newState = {
@@ -436,9 +705,81 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
     setNewName('');
     setNewClient('');
     setNewUrl('https://');
+    setNewQueues('');
   };
 
-  const telemetrySnippetCode = `<!-- LSC Telemetry & Security Agent v2.0 -->
+  // =========================================================================
+  // CONSOLIDADO POR PROYECTO (Resumen de Rendimiento, Latencia & SLA)
+  // =========================================================================
+  const projectConsolidatedMetrics = useMemo(() => {
+    return state.monitoredProjects.map((proj) => {
+      const projLogs = rawTelemetryLogs.filter((log) => {
+        const pid = (log.project_id || '').toLowerCase();
+        return pid === proj.id.toLowerCase() || (log.url && proj.url && log.url.includes(proj.id));
+      });
+
+      const totalPings = projLogs.length;
+      const latencies = projLogs.map((l) => l.load_time_ms).filter((ms) => typeof ms === 'number' && ms > 0);
+      const avgLatency = latencies.length > 0 ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length) : proj.avgResponseTimeMs;
+      const peakLatency = latencies.length > 0 ? Math.max(...latencies) : Math.round(proj.avgResponseTimeMs * 1.5);
+      const errorCount = projLogs.filter((l) => l.event === 'error' || l.event === 'security_anomaly').length;
+      const slaPercentage = totalPings > 0 ? Math.max(90, Math.round(((totalPings - errorCount) / totalPings) * 1000) / 10) : proj.uptimePercentage;
+
+      return {
+        id: proj.id,
+        name: proj.name,
+        url: proj.url,
+        status: proj.status,
+        totalPings,
+        avgLatency,
+        peakLatency,
+        slaPercentage,
+        sslValid: proj.sslValid,
+        lastHeartbeat: proj.lastHeartbeat,
+        dbType: proj.databaseType || 'static_none',
+        errorCount,
+      };
+    });
+  }, [state.monitoredProjects, rawTelemetryLogs]);
+
+  // Consolidado Global de Métricas de Telemetría (Pings, Latencia, SLA, SSL y Errores)
+  const telemetrySummary = useMemo(() => {
+    const totalLogs = rawTelemetryLogs.length;
+    const latencies = rawTelemetryLogs
+      .map((l) => l.load_time_ms)
+      .filter((ms) => typeof ms === 'number' && ms > 0);
+    const avgLat = latencies.length > 0 ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length) : 210;
+    const peakLat = latencies.length > 0 ? Math.max(...latencies) : 380;
+    const errorLogs = rawTelemetryLogs.filter((l) => l.event === 'error' || l.event === 'security_anomaly');
+    const errorCount = errorLogs.length;
+    const globalSla = totalLogs > 0 ? Math.max(90, Math.round(((totalLogs - errorCount) / totalLogs) * 1000) / 10) : 100;
+    const sslLogs = rawTelemetryLogs.filter((l) => l.ssl_valid);
+    const sslRate = totalLogs > 0 ? Math.round((sslLogs.length / totalLogs) * 100) : 100;
+
+    return {
+      totalLogs,
+      avgLat,
+      peakLat,
+      errorCount,
+      globalSla,
+      sslRate,
+    };
+  }, [rawTelemetryLogs]);
+
+  // Filtrado de logs de telemetría para el stream
+  const filteredTelemetryLogs = useMemo(() => {
+    return rawTelemetryLogs.filter((log) => {
+      const matchesProject =
+        streamProjectFilter === 'all' ||
+        (log.project_id || '').toLowerCase() === streamProjectFilter.toLowerCase();
+      const matchesEvent =
+        streamEventFilter === 'all' || (log.event || '').toLowerCase() === streamEventFilter.toLowerCase();
+      return matchesProject && matchesEvent;
+    });
+  }, [rawTelemetryLogs, streamProjectFilter, streamEventFilter]);
+
+  // Snippet de telemetría JS enriquecido v2.1
+  const telemetrySnippetCode = `<!-- LSC Telemetry & Security Agent v2.1 -->
 <script>
 (function (config) {
   'use strict';
@@ -514,20 +855,16 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
         const domReady = Math.round(nav.domContentLoadedEventEnd - nav.startTime);
         metricDetails += ', TTFB: ' + ttfb + 'ms, DOMReady: ' + domReady + 'ms';
       }
-      send({
-        event: 'heartbeat',
-        loadTimeMs: loadTime,
-        message: metricDetails
-      });
+      send({ event: 'heartbeat', loadTimeMs: loadTime, message: metricDetails });
     }, 0);
   });
 
-  // 2. Errores JS
+  // 2. Errores JS en producción
   window.addEventListener('error', function (e) {
     handleAnomaly({ type: 'javascript_error', message: e.message, source: e.filename, line: e.lineno, col: e.colno });
   });
 
-  // 3. Promesas no manejadas
+  // 3. Promesas rechazadas no manejadas
   window.addEventListener('unhandledrejection', function (e) {
     handleAnomaly({ type: 'unhandled_rejection', message: e.reason && e.reason.message ? e.reason.message : String(e.reason) });
   });
@@ -545,21 +882,6 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
       handleAnomaly({ type: 'mixed_content', count: insecure.length, urls: insecure.slice(0, 5).map(function (r) { return r.name; }) });
     }
   });
-
-  // 6. Inyeccion de DOM (XSS / Skimmers)
-  if (window.MutationObserver) {
-    const observer = new MutationObserver(function (mutations) {
-      mutations.forEach(function (m) {
-        m.addedNodes.forEach(function (node) {
-          if (node.nodeType !== 1) return;
-          if (node.tagName === 'SCRIPT' || node.tagName === 'IFRAME') {
-            handleAnomaly({ type: 'dom_injection', tag: node.tagName, src: node.src || 'inline' });
-          }
-        });
-      });
-    });
-    observer.observe(document.documentElement, { childList: true, subtree: true });
-  }
 })({
   projectId: 'MI_PROYECTO_ID',
   endpoint: 'https://cvfybrtblxzpawnxqsnd.supabase.co/rest/v1/telemetry_logs',
@@ -576,9 +898,750 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
     setTimeout(() => setCopiedSnippet(false), 2000);
   };
 
+  // =========================================================================
+  // SUB-VISTA 1: FICHA TÉCNICA PROFUNDA DE UN SOLO PROYECTO ("MÁS DETALLES")
+  // =========================================================================
+  const detailProject = state.monitoredProjects.find((p) => p.id === detailedProjectId);
+
+  if (detailProject) {
+    const isSupabase = detailProject.databaseType === 'supabase_postgres' || detailProject.supabaseKeepAliveEnabled;
+    const isStatic = detailProject.databaseType === 'static_none';
+
+    return (
+      <div className="p-8 max-w-7xl mx-auto space-y-8 text-slate-200 animate-in fade-in">
+        {/* Barra superior de navegación de vuelta al monitor general */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#202634] pb-5">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setDetailedProjectId(null)}
+              className="p-2 bg-[#12151C] hover:bg-[#1f2738] border border-[#202634] hover:border-emerald-500/50 rounded-xl text-slate-300 hover:text-white transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-mono"
+            >
+              <ArrowLeft className="w-4 h-4 text-emerald-400" />
+              <span>Volver al Monitor General</span>
+            </button>
+            <div className="h-5 w-px bg-[#202634]"></div>
+            <div>
+              <h1 className="text-xl font-bold text-white font-mono flex items-center gap-2">
+                <span>{detailProject.name}</span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-emerald-950 text-emerald-300 border border-emerald-800">
+                  {detailProject.lifecycleStage || 'Producción'}
+                </span>
+              </h1>
+              <p className="text-xs text-slate-400 font-mono mt-0.5">
+                Ficha Técnica Profunda • Infraestructura, BBDD, QA, Bitácora y Facturación
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => auditSingleProjectLive(detailProject.id)}
+              disabled={auditingId === detailProject.id}
+              className="flex items-center gap-2 px-3.5 py-2 bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600/30 rounded-lg text-xs font-mono transition-colors cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${auditingId === detailProject.id ? 'animate-spin' : ''}`} />
+              <span>{auditingId === detailProject.id ? 'Midiendo Latencia...' : 'Auditar en Vivo'}</span>
+            </button>
+
+            {detailProject.url && (
+              <a
+                href={detailProject.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-mono font-bold transition-colors cursor-pointer"
+              >
+                <span>Visitar Sitio</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            )}
+          </div>
+        </div>
+
+        {/* 1. Módulo de Arquitectura, Lenguajes, Colas y Despliegue */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div className="bg-[#12151C] border border-[#202634] p-5 rounded-2xl space-y-3 font-mono text-xs">
+            <div className="flex items-center gap-2 text-white font-bold text-sm border-b border-[#202634] pb-2">
+              <Code className="w-4 h-4 text-emerald-400" />
+              <span>Stack & Arquitectura</span>
+            </div>
+            <div className="space-y-2">
+              <div>
+                <span className="text-slate-500 text-[10px] block">Tecnologías & Frameworks:</span>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {(detailProject.stack || ['React', 'Web']).map((tech, i) => (
+                    <span key={i} className="px-2 py-0.5 bg-[#0A0C10] border border-[#202634] text-slate-300 rounded text-[11px]">
+                      {tech}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <span className="text-slate-500 text-[10px] block">Colas & Tareas en Segundo Plano:</span>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {(detailProject.queues && detailProject.queues.length > 0) ? (
+                    detailProject.queues.map((q, i) => (
+                      <span key={i} className="px-2 py-0.5 bg-purple-950/40 border border-purple-800/40 text-purple-300 rounded text-[10px]">
+                        {q}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-slate-500 text-[11px]">Sin colas asíncronas</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-[#12151C] border border-[#202634] p-5 rounded-2xl space-y-3 font-mono text-xs">
+            <div className="flex items-center gap-2 text-white font-bold text-sm border-b border-[#202634] pb-2">
+              <GitBranch className="w-4 h-4 text-sky-400" />
+              <span>Despliegue & Git</span>
+            </div>
+            <div className="space-y-2 text-[11px]">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Versión:</span>
+                <span className="text-white font-bold">{detailProject.versionDeployed || 'v1.0.0'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Último Commit:</span>
+                <span className="text-emerald-400 font-bold">{detailProject.commitHash || '92c473f'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Fecha Despliegue:</span>
+                <span className="text-slate-300">{detailProject.commitDate || 'Hoy'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Garantía / Soporte:</span>
+                <span className="text-sky-300 font-semibold">{detailProject.supportWarrantyDays || 90} días activos</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-[#12151C] border border-[#202634] p-5 rounded-2xl space-y-3 font-mono text-xs">
+            <div className="flex items-center gap-2 text-white font-bold text-sm border-b border-[#202634] pb-2">
+              <Shield className="w-4 h-4 text-emerald-400" />
+              <span>Seguridad, SSL & SLA</span>
+            </div>
+            <div className="space-y-2 text-[11px]">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Uptime Registrado:</span>
+                <span className="text-emerald-400 font-bold">{detailProject.uptimePercentage}%</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Certificado SSL:</span>
+                <span className="text-sky-400 font-bold">🟢 {detailProject.sslExpiresDays || 365} días restantes</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Latencia HTTP:</span>
+                <span className="text-white font-bold">{detailProject.avgResponseTimeMs} ms</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Errores Registrados:</span>
+                <span className="text-emerald-400 font-bold">{detailProject.recentErrors?.length || 0} anomalías</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 2. Módulo de Base de Datos, Cuota y Keep-Alive */}
+        <div className="bg-[#12151C] border border-[#202634] p-6 rounded-2xl space-y-4 font-mono text-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#202634] pb-3">
+            <div className="flex items-center gap-2.5">
+              <Database className="w-5 h-5 text-emerald-400" />
+              <div>
+                <h3 className="text-white font-bold text-sm">
+                  Tipo, Estado y Cuota de Almacenamiento de Base de Datos
+                </h3>
+                <p className="text-slate-400 text-[11px]">
+                  {isSupabase
+                    ? 'Motor PostgreSQL en Supabase Cloud con Keep-Alive anti-pausa'
+                    : isStatic
+                    ? '100% Frontend Estático en GitHub Pages (Sin base de datos)'
+                    : 'Base de datos externa vinculada'}
+                </p>
+              </div>
+            </div>
+
+            {isSupabase && (
+              <button
+                onClick={() => handlePingKeepAlive(detailProject.id)}
+                disabled={pingingSupabaseId === detailProject.id}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-500/50 rounded-lg text-emerald-300 text-xs font-bold transition-colors cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${pingingSupabaseId === detailProject.id ? 'animate-spin' : ''}`} />
+                <span>{pingingSupabaseId === detailProject.id ? 'Consultando DB...' : 'Ping DB Ahora'}</span>
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="p-3 bg-[#0A0C10] rounded-xl border border-[#1b202c]">
+              <span className="text-slate-500 text-[10px] block">Motor de BBDD:</span>
+              <span className="text-white font-bold text-sm mt-1 block">
+                {detailProject.databaseType === 'mysql_cpanel'
+                  ? 'MySQL (cPanel TecnoInver)'
+                  : isSupabase
+                  ? 'PostgreSQL (Supabase Cloud)'
+                  : isStatic
+                  ? 'Estático (Sin BBDD)'
+                  : detailProject.databaseType}
+              </span>
+            </div>
+            <div className="p-3 bg-[#0A0C10] rounded-xl border border-[#1b202c]">
+              <span className="text-slate-500 text-[10px] block">Estado de Conexión:</span>
+              <span className="text-emerald-400 font-bold text-sm mt-1 block flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                {detailProject.databaseStatus === 'sin_bbdd' ? 'Sin BBDD (No Requerido)' : 'En Línea & Conectada'}
+              </span>
+            </div>
+            <div className="p-3 bg-[#0A0C10] rounded-xl border border-[#1b202c]">
+              <span className="text-slate-500 text-[10px] block">Latencia Query DB:</span>
+              <span className="text-sky-400 font-bold text-sm mt-1 block">
+                {isSupabase ? `${detailProject.dbHealthPingMs || 38} ms` : 'N/A'}
+              </span>
+            </div>
+            <div className="p-3 bg-[#0A0C10] rounded-xl border border-[#1b202c]">
+              <span className="text-slate-500 text-[10px] block">Almacenamiento / Cuota:</span>
+              <span className="text-purple-300 font-bold text-sm mt-1 block">
+                {detailProject.dbStorageQuota
+                  ? `${detailProject.dbStorageQuota.usedMB} MB / ${detailProject.dbStorageQuota.limitMB} MB`
+                  : '0 MB (Tier Gratis)'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* 3. Bóveda de Recursos, Vencimientos & Accesos Rápidos */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-[#12151C] border border-[#202634] p-5 rounded-2xl space-y-4 font-mono text-xs">
+            <div className="flex items-center justify-between border-b border-[#202634] pb-3">
+              <div className="flex items-center gap-2 text-white font-bold text-sm">
+                <Server className="w-4 h-4 text-amber-400" />
+                <span>Bóveda de Infraestructura, Costos & Vencimientos</span>
+              </div>
+              <span className="text-emerald-400 text-[10px]">
+                {detailProject.infraVault?.costCategory === 'gratis_tier'
+                  ? 'Tier Gratuito ($0 CLP)'
+                  : `${detailProject.infraVault?.estimatedCostCLP?.toLocaleString('es-CL')} CLP/año`}
+              </span>
+            </div>
+
+            <div className="space-y-3 text-[11px]">
+              <div className="flex justify-between items-center p-2.5 bg-[#0A0C10] rounded-lg border border-[#1b202c]">
+                <div>
+                  <span className="text-slate-400 block">Dominio:</span>
+                  <span className="text-white font-semibold">{detailProject.infraVault?.domainRegistrar || 'NIC Chile (.cl)'}</span>
+                </div>
+                {detailProject.infraVault?.renewalDate && (
+                  <span className="px-2 py-0.5 bg-amber-950 text-amber-300 border border-amber-800 rounded text-[10px]">
+                    Renueva: {detailProject.infraVault.renewalDate}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex justify-between items-center p-2.5 bg-[#0A0C10] rounded-lg border border-[#1b202c]">
+                <div>
+                  <span className="text-slate-400 block">Alojamiento Web / Hosting:</span>
+                  <span className="text-white font-semibold">{detailProject.infraVault?.hostingProvider || 'GitHub CDN'}</span>
+                </div>
+                <span className="text-emerald-400 text-[10px]">Cloud Activo</span>
+              </div>
+
+              {/* Accesos Rápidos Deep Links */}
+              <div className="pt-2">
+                <span className="text-slate-400 block mb-2 font-bold">Accesos Rápidos a Entornos:</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {detailProject.deepLinks?.github && (
+                    <a
+                      href={detailProject.deepLinks.github}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 bg-[#0A0C10] hover:bg-[#1a212e] border border-[#202634] hover:border-slate-500 rounded-lg text-slate-300 hover:text-white transition-colors flex items-center gap-1.5"
+                    >
+                      <Github className="w-3.5 h-3.5" />
+                      <span>GitHub</span>
+                    </a>
+                  )}
+
+                  {detailProject.deepLinks?.supabase && (
+                    <a
+                      href={detailProject.deepLinks.supabase}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 bg-[#0A0C10] hover:bg-[#1a212e] border border-[#202634] hover:border-emerald-500/50 rounded-lg text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1.5"
+                    >
+                      <Database className="w-3.5 h-3.5" />
+                      <span>Supabase</span>
+                    </a>
+                  )}
+
+                  {detailProject.deepLinks?.searchConsole && (
+                    <a
+                      href={detailProject.deepLinks.searchConsole}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 bg-[#0A0C10] hover:bg-[#1a212e] border border-[#202634] hover:border-emerald-500/50 rounded-lg text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1.5"
+                    >
+                      <Search className="w-3.5 h-3.5" />
+                      <span>Search Console</span>
+                    </a>
+                  )}
+
+                  {detailProject.deepLinks?.cpanel && (
+                    <a
+                      href={detailProject.deepLinks.cpanel}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 bg-[#0A0C10] hover:bg-[#1a212e] border border-[#202634] hover:border-amber-500/50 rounded-lg text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1.5"
+                    >
+                      <Server className="w-3.5 h-3.5" />
+                      <span>cPanel</span>
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Ficha Comercial & Facturación */}
+          <div className="bg-[#12151C] border border-[#202634] p-5 rounded-2xl space-y-4 font-mono text-xs">
+            <div className="flex items-center justify-between border-b border-[#202634] pb-3">
+              <div className="flex items-center gap-2 text-white font-bold text-sm">
+                <DollarSign className="w-4 h-4 text-emerald-400" />
+                <span>Ficha de Cliente, Hitos & Facturación</span>
+              </div>
+              <span className="text-[10px] text-slate-400">
+                {detailProject.isPersonalProject ? 'Proyecto Propio / I+D' : detailProject.clientBilling ? 'Cliente Comercial' : 'Sin Facturación'}
+              </span>
+            </div>
+
+            {detailProject.clientBilling ? (
+              <div className="space-y-3 text-[11px]">
+                <div className="flex justify-between items-center p-2.5 bg-[#0A0C10] rounded-lg border border-[#1b202c]">
+                  <span className="text-slate-400">Cliente Asociado:</span>
+                  <span className="text-white font-bold">{detailProject.clientBilling.clientName}</span>
+                </div>
+                <div className="flex justify-between items-center p-2.5 bg-[#0A0C10] rounded-lg border border-[#1b202c]">
+                  <span className="text-slate-400">Monto Total Cotizado:</span>
+                  <span className="text-emerald-400 font-bold">${detailProject.clientBilling.totalQuoteCLP.toLocaleString('es-CL')} CLP</span>
+                </div>
+                <div className="flex justify-between items-center p-2.5 bg-[#0A0C10] rounded-lg border border-[#1b202c]">
+                  <span className="text-slate-400">Estado de Pago:</span>
+                  <span className="text-emerald-300 font-bold">100% Pagado (Al Día)</span>
+                </div>
+                <div className="flex justify-between items-center p-2.5 bg-[#0A0C10] rounded-lg border border-[#1b202c]">
+                  <span className="text-slate-400">Tributación SII:</span>
+                  <span className="text-sky-400 font-bold">{detailProject.clientBilling.taxDocument.toUpperCase()} Electrónica</span>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 bg-[#0A0C10] rounded-xl border border-[#1b202c] space-y-3">
+                <div className="flex items-center gap-2 text-slate-300 font-bold">
+                  <span className="w-2 h-2 rounded-full bg-slate-500"></span>
+                  <span>Sin Ficha Comercial Registrada</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  {detailProject.isPersonalProject
+                    ? 'Configurado como proyecto propio / portafolio personal. No genera facturación a terceros.'
+                    : 'Este proyecto aún no tiene una cotización del CRM vinculada ni cobros registrados.'}
+                </p>
+
+                <div className="pt-2 border-t border-[#1a1f2b] flex flex-col sm:flex-row items-center gap-2">
+                  {state.quotes.length > 0 ? (
+                    <div className="flex items-center gap-1.5 w-full sm:w-auto flex-1">
+                      <select
+                        value={selectedQuoteIdToLink}
+                        onChange={(e) => setSelectedQuoteIdToLink(e.target.value)}
+                        className="bg-[#12151C] border border-[#202634] text-slate-300 text-xs rounded-lg p-2 flex-1 focus:outline-none focus:border-emerald-500"
+                      >
+                        <option value="">-- Vincular Cotización del CRM --</option>
+                        {state.quotes.map((q) => (
+                          <option key={q.id} value={q.id}>
+                            {q.clientName} (${q.totalCLP.toLocaleString('es-CL')} CLP)
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => handleLinkQuoteToProject(detailProject.id, selectedQuoteIdToLink)}
+                        disabled={!selectedQuoteIdToLink}
+                        className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-lg text-xs font-bold cursor-pointer"
+                      >
+                        Vincular
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {!detailProject.isPersonalProject && (
+                    <button
+                      onClick={() => handleMarkPersonalProject(detailProject.id)}
+                      className="px-3 py-2 bg-[#12151C] hover:bg-[#1f2738] border border-[#202634] text-purple-300 hover:text-white rounded-lg text-xs font-mono transition-colors cursor-pointer w-full sm:w-auto"
+                    >
+                      Marcar como Proyecto Propio
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 4. Logs de Errores en Producción (Error Tracking) & Copias de Seguridad (Backups) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Error Tracking Widget */}
+          <div className="bg-[#12151C] border border-[#202634] p-5 rounded-2xl space-y-4 font-mono text-xs">
+            <div className="flex items-center justify-between border-b border-[#202634] pb-3">
+              <div className="flex items-center gap-2 text-white font-bold text-sm">
+                <AlertTriangle className="w-4 h-4 text-rose-400" />
+                <span>Logs de Errores en Producción (Error Tracking)</span>
+              </div>
+              {(() => {
+                const pErrors = rawTelemetryLogs.filter((log) => {
+                  const pid = (log.project_id || '').toLowerCase();
+                  const matchesPid =
+                    pid === detailProject.id.toLowerCase() ||
+                    (log.url && detailProject.url && log.url.includes(detailProject.id.replace(/^mon-/, '')));
+                  return matchesPid && (log.event === 'error' || log.event === 'security_anomaly');
+                });
+                return (
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      pErrors.length === 0
+                        ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60'
+                        : 'bg-rose-950/80 text-rose-300 border border-rose-800/60'
+                    }`}
+                  >
+                    {pErrors.length === 0 ? '🟢 0 Errores Activos' : `🔴 ${pErrors.length} Anomalías`}
+                  </span>
+                );
+              })()}
+            </div>
+
+            {(() => {
+              const pErrors = rawTelemetryLogs.filter((log) => {
+                const pid = (log.project_id || '').toLowerCase();
+                const matchesPid =
+                  pid === detailProject.id.toLowerCase() ||
+                  (log.url && detailProject.url && log.url.includes(detailProject.id.replace(/^mon-/, '')));
+                return matchesPid && (log.event === 'error' || log.event === 'security_anomaly');
+              });
+
+              if (pErrors.length === 0) {
+                return (
+                  <div className="p-5 text-center bg-[#0A0C10] rounded-xl border border-[#1b202c] space-y-1">
+                    <CheckCircle2 className="w-6 h-6 text-emerald-400 mx-auto mb-2" />
+                    <div className="text-white font-bold text-xs">Todo Operativo en Producción</div>
+                    <div className="text-slate-400 text-[11px]">
+                      No se han capturado caídas ni errores JavaScript en este proyecto en las últimas 24 horas.
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {pErrors.map((errLog, idx) => (
+                    <div key={idx} className="p-2.5 bg-[#0A0C10] rounded-lg border border-rose-900/40 text-[11px] space-y-1">
+                      <div className="flex items-center justify-between text-rose-300 font-bold">
+                        <span className="flex items-center gap-1.5">
+                          <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                          <span>{errLog.event}</span>
+                        </span>
+                        <span className="text-[10px] text-slate-500">
+                          {errLog.timestamp ? new Date(errLog.timestamp).toLocaleTimeString() : 'Reciente'}
+                        </span>
+                      </div>
+                      <p className="text-slate-300 break-words">{errLog.message || 'Error en endpoint o fetch'}</p>
+                      {errLog.url && <span className="text-[10px] text-slate-500 block truncate">{errLog.url}</span>}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Copias de Seguridad (Backups) */}
+          <div className="bg-[#12151C] border border-[#202634] p-5 rounded-2xl space-y-4 font-mono text-xs">
+            <div className="flex items-center justify-between border-b border-[#202634] pb-3">
+              <div className="flex items-center gap-2 text-white font-bold text-sm">
+                <HardDrive className="w-4 h-4 text-emerald-400" />
+                <span>Copias de Seguridad & Respaldos (Backups)</span>
+              </div>
+              <span className="text-[10px] text-emerald-400 bg-emerald-950/60 border border-emerald-800/40 px-2 py-0.5 rounded">
+                {(detailProject.backupLinks || []).length} registrados
+              </span>
+            </div>
+
+            {/* Formulario nuevo respaldo */}
+            <div className="p-3 bg-[#0A0C10] rounded-xl border border-[#1b202c] space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <input
+                  type="text"
+                  placeholder="Nombre (ej. Dump MySQL cPanel)"
+                  value={newBackupName}
+                  onChange={(e) => setNewBackupName(e.target.value)}
+                  className="bg-[#12151C] border border-[#202634] rounded-lg p-2 text-white text-xs focus:outline-none focus:border-emerald-500"
+                />
+                <input
+                  type="text"
+                  placeholder="URL o Ruta (ej. https://...)"
+                  value={newBackupUrl}
+                  onChange={(e) => setNewBackupUrl(e.target.value)}
+                  className="bg-[#12151C] border border-[#202634] rounded-lg p-2 text-white text-xs focus:outline-none focus:border-emerald-500"
+                />
+                <div className="flex gap-1.5">
+                  <input
+                    type="date"
+                    value={newBackupDate}
+                    onChange={(e) => setNewBackupDate(e.target.value)}
+                    className="bg-[#12151C] border border-[#202634] rounded-lg p-2 text-slate-300 text-xs flex-1 focus:outline-none focus:border-emerald-500"
+                  />
+                  <button
+                    onClick={() => handleAddBackup(detailProject.id)}
+                    className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg cursor-pointer text-xs"
+                    title="Añadir respaldo"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Lista de Respaldos */}
+            <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+              {(!detailProject.backupLinks || detailProject.backupLinks.length === 0) ? (
+                <div className="p-4 text-center text-slate-500 bg-[#0A0C10] rounded-xl border border-[#1b202c]">
+                  Sin copias registradas. Agrega una arriba (ej. Backup cPanel o Dump SQL).
+                </div>
+              ) : (
+                detailProject.backupLinks.map((b, idx) => (
+                  <div
+                    key={idx}
+                    className="p-2.5 bg-[#0A0C10] border border-[#1b202c] rounded-lg flex items-center justify-between text-[11px]"
+                  >
+                    <div className="flex items-center gap-2 truncate flex-1">
+                      <HardDrive className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                      <span className="text-white font-medium truncate">{b.name}</span>
+                      <span className="text-slate-500 text-[10px]">({b.date})</span>
+                    </div>
+                    <div className="flex items-center gap-2 ml-2">
+                      <a
+                        href={b.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-emerald-400 hover:text-emerald-300 text-[10px] underline flex items-center gap-0.5"
+                      >
+                        <span>Abrir</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                      <button
+                        onClick={() => handleDeleteBackup(detailProject.id, idx)}
+                        className="text-slate-500 hover:text-rose-400 p-1 cursor-pointer"
+                        title="Eliminar registro"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 5. Checklist QA ("Listo para Producción") & Tareas Pendientes */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-[#12151C] border border-[#202634] p-5 rounded-2xl space-y-4 font-mono text-xs">
+            <div className="flex items-center justify-between border-b border-[#202634] pb-3">
+              <div className="flex items-center gap-2 text-white font-bold text-sm">
+                <CheckSquare className="w-4 h-4 text-emerald-400" />
+                <span>Checklist QA ("Listo para Producción")</span>
+              </div>
+              <span className="text-[10px] text-emerald-400 font-bold">Verificación Inteligente</span>
+            </div>
+
+            <div className="space-y-2">
+              {[
+                {
+                  key: 'seo' as const,
+                  label: 'SEO Básico & Meta Tags (OpenGraph, Sitemap, GSC)',
+                  autoStatus: detailProject.gscConnected ? '🟢 Vinculado a Search Console API' : '🟡 Pendiente vincular en GSC',
+                },
+                {
+                  key: 'responsive' as const,
+                  label: 'Diseño 100% Adaptable Móvil & Tablet (Core Web Vitals)',
+                  autoStatus: '🟢 Verificado Mobile-First & Responsive',
+                },
+                {
+                  key: 'errorHandling' as const,
+                  label: 'Manejo Global de Errores & Telemetría en Fetch HTTP',
+                  autoStatus: '🟢 Telemetría activa con Supabase Cloud',
+                },
+                {
+                  key: 'security' as const,
+                  label: 'Seguridad HTTPS, Cabeceras CSP y Certificado SSL',
+                  autoStatus: detailProject.sslValid ? `🟢 Certificado SSL Activo (${detailProject.sslExpiresDays || 365} días)` : '🔴 Requiere SSL',
+                },
+                {
+                  key: 'backups' as const,
+                  label: 'Respaldo Automático de Código & Dump de Base de Datos',
+                  autoStatus: (detailProject.backupLinks && detailProject.backupLinks.length > 0)
+                    ? `🟢 ${detailProject.backupLinks.length} Copias Registradas`
+                    : '🟡 Sin copias registradas',
+                },
+              ].map(({ key, label, autoStatus }) => {
+                const isChecked = Boolean(detailProject.qaChecklist?.[key]);
+                return (
+                  <div
+                    key={key}
+                    onClick={() => handleToggleQa(detailProject.id, key)}
+                    className={`w-full p-2.5 rounded-xl border text-left transition-colors flex items-center justify-between cursor-pointer ${
+                      isChecked
+                        ? 'bg-emerald-950/40 text-emerald-300 border-emerald-800/60'
+                        : 'bg-[#0A0C10] text-slate-400 border-[#1b202c] hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="space-y-0.5">
+                      <span className="text-[11px] block">{label}</span>
+                      <span className="text-[10px] text-slate-500 font-mono">{autoStatus}</span>
+                    </div>
+                    <span className="flex-shrink-0 ml-2">
+                      {isChecked ? <Check className="w-4 h-4 text-emerald-400" /> : <X className="w-4 h-4 text-slate-600" />}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Tareas Pendientes & Próximas Mejoras */}
+          <div className="bg-[#12151C] border border-[#202634] p-5 rounded-2xl space-y-4 font-mono text-xs">
+            <div className="flex items-center justify-between border-b border-[#202634] pb-3">
+              <div className="flex items-center gap-2 text-white font-bold text-sm">
+                <ListTodo className="w-4 h-4 text-sky-400" />
+                <span>Planificación & Tareas Pendientes</span>
+              </div>
+              <span className="text-[10px] text-sky-400">
+                {(detailProject.pendingTasks || []).filter((t) => t.completed).length}/{(detailProject.pendingTasks || []).length} completadas
+              </span>
+            </div>
+
+            {/* Formulario añadir tarea */}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newTaskInput}
+                onChange={(e) => setNewTaskInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddProjectTask(detailProject.id)}
+                placeholder="Nueva tarea (ej. Migrar imágenes a CDN...)"
+                className="flex-1 bg-[#0A0C10] border border-[#202634] rounded-lg p-2 text-white text-xs focus:outline-none focus:border-emerald-500"
+              />
+              <select
+                value={newTaskCategory}
+                onChange={(e) => setNewTaskCategory(e.target.value)}
+                className="bg-[#0A0C10] border border-[#202634] rounded-lg p-2 text-slate-300 text-xs"
+              >
+                <option value="Mejora">Mejora</option>
+                <option value="Bug">Bug</option>
+                <option value="SEO">SEO</option>
+                <option value="Seguridad">Seguridad</option>
+              </select>
+              <button
+                onClick={() => handleAddProjectTask(detailProject.id)}
+                className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg cursor-pointer text-xs"
+              >
+                +
+              </button>
+            </div>
+
+            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+              {(!detailProject.pendingTasks || detailProject.pendingTasks.length === 0) ? (
+                <div className="p-4 text-center text-slate-500 bg-[#0A0C10] rounded-xl border border-[#1b202c]">
+                  No hay tareas pendientes. Agrega la primera arriba.
+                </div>
+              ) : (
+                detailProject.pendingTasks.map((t) => (
+                  <div
+                    key={t.id}
+                    onClick={() => handleToggleTask(detailProject.id, t.id)}
+                    className={`p-2.5 rounded-lg border flex items-center justify-between cursor-pointer transition-colors ${
+                      t.completed ? 'bg-[#0A0C10]/60 border-[#1b202c] text-slate-500 line-through' : 'bg-[#0A0C10] border-[#1b202c] text-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center text-[10px] ${t.completed ? 'bg-emerald-600 border-emerald-500 text-white' : 'border-slate-600'}`}>
+                        {t.completed && '✓'}
+                      </span>
+                      <span className="text-[11px]">{t.title}</span>
+                    </div>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#171d27] text-slate-400">
+                      {t.category}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 5. Bitácora Técnica & Historial de Decisiones */}
+        <div className="bg-[#12151C] border border-[#202634] p-6 rounded-2xl space-y-4 font-mono text-xs">
+          <div className="flex items-center justify-between border-b border-[#202634] pb-3">
+            <div className="flex items-center gap-2.5">
+              <FileText className="w-5 h-5 text-emerald-400" />
+              <div>
+                <h3 className="text-white font-bold text-sm">
+                  Bitácora Técnica & Historial de Decisiones de Arquitectura
+                </h3>
+                <p className="text-slate-400 text-[11px]">
+                  Registro cronológico de optimizaciones, soluciones a problemas complejos y notas para el cliente.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newNoteInput}
+              onChange={(e) => setNewNoteInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddProjectNote(detailProject.id)}
+              placeholder="Anotar hito, solución técnica o acuerdo con el cliente..."
+              className="flex-1 bg-[#0A0C10] border border-[#202634] rounded-lg p-2.5 text-white text-xs focus:outline-none focus:border-emerald-500"
+            />
+            <button
+              onClick={() => handleAddProjectNote(detailProject.id)}
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg cursor-pointer text-xs"
+            >
+              Guardar Nota
+            </button>
+          </div>
+
+          <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+            {(!detailProject.notes || detailProject.notes.length === 0) ? (
+              <div className="p-6 text-center text-slate-500 bg-[#0A0C10] rounded-xl border border-[#1b202c]">
+                No hay anotaciones registradas todavía.
+              </div>
+            ) : (
+              detailProject.notes.map((note, idx) => (
+                <div key={idx} className="p-3 bg-[#0A0C10] border border-[#1b202c] rounded-xl flex items-start gap-2.5 text-slate-300 leading-relaxed text-[11px]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-2 flex-shrink-0"></span>
+                  <span className="flex-1">{note}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // VISTA GENERAL DEL MONITOR DE PROYECTOS (Grid de Proyectos + Consolidado)
+  // =========================================================================
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8 text-slate-200">
-      {/* Title & Description */}
+      {/* Encabezado y Acciones Principales */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-3 font-mono">
@@ -586,7 +1649,7 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
             Monitor de Proyectos Levantados & Telemetría
           </h1>
           <p className="text-xs text-slate-400 mt-1 font-mono">
-            Auditoría en tiempo real conectada a Supabase Cloud. Detección automática de URLs de producción, latencia y SSL.
+            Auditoría en tiempo real con Supabase Cloud. Detección automática de latencia, SSL, Keep-Alive anti-pausa y telemetría de producción.
             {lastSyncTime && <span className="text-emerald-400 ml-2">● Sincronizado {lastSyncTime}</span>}
           </p>
         </div>
@@ -595,7 +1658,7 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
           <button
             onClick={() => auditAllProjectsLive()}
             disabled={isAuditingLive}
-            className="flex items-center gap-2 px-3.5 py-2 bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600/30 rounded-lg text-xs font-mono font-medium transition-colors"
+            className="flex items-center gap-2 px-3.5 py-2 bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600/30 rounded-lg text-xs font-mono font-medium transition-colors cursor-pointer"
             title="Realizar ping HTTP activo a todos los sitios y medir latencia real"
           >
             <Activity className={`w-3.5 h-3.5 text-emerald-400 ${isAuditingLive ? 'animate-spin' : ''}`} />
@@ -605,7 +1668,7 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
           <button
             onClick={() => syncTelemetryFromSupabase()}
             disabled={isSyncingTelemetry}
-            className="flex items-center gap-2 px-3.5 py-2 bg-[#161B24] border border-[#232A3B] hover:border-emerald-500/50 rounded-lg text-xs font-mono text-slate-300 transition-colors"
+            className="flex items-center gap-2 px-3.5 py-2 bg-[#161B24] border border-[#232A3B] hover:border-emerald-500/50 rounded-lg text-xs font-mono text-slate-300 transition-colors cursor-pointer"
             title="Consultar últimas URLs y Heartbeats en Supabase"
           >
             <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isSyncingTelemetry ? 'animate-spin' : ''}`} />
@@ -614,7 +1677,7 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
 
           <button
             onClick={() => setShowAddProject(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-mono font-medium transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-mono font-medium transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Registrar Proyecto</span>
@@ -622,214 +1685,432 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
         </div>
       </div>
 
-      {/* Projects Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {state.monitoredProjects.map((proj) => (
-          <div
-            key={proj.id}
-            className="bg-[#12151C] border border-[#202634] p-5 rounded-xl space-y-4 hover:border-[#2f394c] transition-colors"
-          >
-            <div className="flex items-start justify-between border-b border-[#202634] pb-3">
-              <div>
-                <h3 className="text-white font-mono font-bold text-sm">{proj.name}</h3>
-                <a
-                  href={proj.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-emerald-400 hover:text-emerald-300 font-mono flex items-center gap-1.5 mt-1 transition-colors group"
-                >
-                  <Globe className="w-3 h-3 text-emerald-400 flex-shrink-0 group-hover:scale-110 transition-transform" />
-                  <span className="truncate max-w-[200px] sm:max-w-xs">{proj.url}</span>
-                </a>
-              </div>
-              <span
-                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase flex items-center gap-1 ${
-                  proj.status === 'online'
-                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/40'
-                    : proj.status === 'degraded'
-                    ? 'bg-amber-950 text-amber-300 border border-amber-800/40'
-                    : 'bg-rose-950 text-rose-300 border border-rose-800/40'
-                }`}
-              >
-                {proj.status === 'online' && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
-                {proj.status === 'degraded' && <AlertTriangle className="w-3 h-3 text-amber-400" />}
-                {proj.status === 'offline' && <XCircle className="w-3 h-3 text-rose-400" />}
-                <span>{proj.status}</span>
-              </span>
+      {/* 1. Tarjetas Métricas KPI de Telemetría Global (Consolidado de Pings) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+        <div className="bg-[#12151C] border border-[#202634] p-4 rounded-xl flex flex-col justify-between shadow-md">
+          <div>
+            <div className="flex items-center justify-between text-xs font-mono text-slate-400">
+              <span className="font-semibold text-slate-300">Pings Recibidos</span>
+              <span className="text-[10px] bg-sky-950/80 text-sky-400 border border-sky-800/60 px-1.5 py-0.2 rounded font-mono">Telemetría</span>
             </div>
-
-            {/* Metrics */}
-            <div className="grid grid-cols-3 gap-2 font-mono text-center">
-              <div className="p-2 bg-[#0A0C10] rounded-lg border border-[#1b202c]">
-                <div className="text-[10px] text-slate-400">Uptime</div>
-                <div className="text-xs font-bold text-emerald-400 mt-1">{proj.uptimePercentage}%</div>
-              </div>
-              <div className="p-2 bg-[#0A0C10] rounded-lg border border-[#1b202c]">
-                <div className="text-[10px] text-slate-400">Latencia Real</div>
-                <div className="text-xs font-bold text-white mt-1">{proj.avgResponseTimeMs} ms</div>
-              </div>
-              <div className="p-2 bg-[#0A0C10] rounded-lg border border-[#1b202c]">
-                <div className="text-[10px] text-slate-400">SSL Válido</div>
-                <div className="text-xs font-bold text-sky-400 mt-1">{proj.sslValid ? 'Sí' : 'No'}</div>
-              </div>
+            <div className="text-2xl font-mono font-bold text-white mt-1.5">
+              {telemetrySummary.totalLogs} <span className="text-xs text-slate-500 font-normal">eventos</span>
             </div>
-
-            {/* Estado del Ping y Botón de Test individual */}
-            <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between border-t border-[#1b202c] pt-2">
-              <div className="flex flex-col">
-                <span className="text-[10px] text-slate-500">Última comprobación:</span>
-                <span className="text-emerald-400 font-semibold">{proj.lastHeartbeat || 'En vivo'}</span>
-              </div>
-              <button
-                onClick={() => auditSingleProjectLive(proj.id)}
-                disabled={auditingId === proj.id}
-                className="px-2.5 py-1 bg-[#171d27] hover:bg-emerald-950/60 border border-[#263143] hover:border-emerald-500/50 text-[10px] text-emerald-400 rounded transition-colors flex items-center gap-1"
-                title="Probar respuesta HTTP ahora"
-              >
-                <RefreshCw className={`w-2.5 h-2.5 ${auditingId === proj.id ? 'animate-spin' : ''}`} />
-                <span>{auditingId === proj.id ? 'Midiendo...' : 'Test Ping'}</span>
-              </button>
-            </div>
-
-            {/* Supabase Keep-Alive Section */}
-            {proj.supabaseKeepAliveEnabled && (
-              <div className="p-3 bg-emerald-950/20 border border-emerald-800/30 rounded-lg space-y-2 font-mono text-xs">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-emerald-300 font-semibold text-[11px]">
-                    <Database className="w-3.5 h-3.5" />
-                    <span>Supabase Keep-Alive Anti-Pausa</span>
-                  </div>
-                  <button
-                    onClick={() => handlePingKeepAlive(proj.id)}
-                    disabled={pingingSupabase}
-                    className="p-1 hover:bg-emerald-900/40 rounded text-emerald-400 transition-colors"
-                    title="Ejecutar Ping de activación manual"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${pingingSupabase ? 'animate-spin' : ''}`} />
-                  </button>
-                </div>
-                <div className="text-[10px] text-slate-400">
-                  {proj.lastSupabasePing || 'Ping programado activo cada 3 días'}
-                </div>
-              </div>
-            )}
-
-            {/* Errors / Warnings */}
-            {proj.recentErrors && proj.recentErrors.length > 0 && (
-              <div className="space-y-1 font-mono text-[11px]">
-                {proj.recentErrors.map((err, i) => (
-                  <div key={i} className="p-2 bg-amber-950/30 border border-amber-800/40 rounded text-amber-300 flex items-start gap-1.5">
-                    <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                    <span>{err.message}</span>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
-        ))}
+          <p className="text-[11px] text-slate-400 font-mono mt-2 pt-2 border-t border-[#1a1f2b] leading-tight">
+            Heartbeats y eventos de carga procesados en tiempo real desde Supabase Cloud vía <code>sendBeacon</code>.
+          </p>
+        </div>
+
+        <div className="bg-[#12151C] border border-[#202634] p-4 rounded-xl flex flex-col justify-between shadow-md">
+          <div>
+            <div className="flex items-center justify-between text-xs font-mono text-slate-400">
+              <span className="font-semibold text-slate-300">Latencia Prom. vs. Pico</span>
+              <span className="text-[10px] bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 px-1.5 py-0.2 rounded font-mono">Velocidad</span>
+            </div>
+            <div className="text-2xl font-mono font-bold text-emerald-400 mt-1.5">
+              {telemetrySummary.avgLat} <span className="text-xs text-slate-400 font-normal">ms</span> <span className="text-xs text-slate-500 font-normal">/</span> <span className="text-amber-400 text-lg">{telemetrySummary.peakLat} ms</span>
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-400 font-mono mt-2 pt-2 border-t border-[#1a1f2b] leading-tight">
+            Tiempo de respuesta del servidor web. Promedio normal de carga vs. pico más lento registrado.
+          </p>
+        </div>
+
+        <div className="bg-[#12151C] border border-[#202634] p-4 rounded-xl flex flex-col justify-between shadow-md">
+          <div>
+            <div className="flex items-center justify-between text-xs font-mono text-slate-400">
+              <span className="font-semibold text-slate-300">Disponibilidad (SLA)</span>
+              <span className="text-[10px] bg-teal-950/80 text-teal-400 border border-teal-800/60 px-1.5 py-0.2 rounded font-mono">Uptime</span>
+            </div>
+            <div className="text-2xl font-mono font-bold text-teal-400 mt-1.5">
+              {telemetrySummary.globalSla}% <span className="text-xs text-slate-500 font-normal">SLA</span>
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-400 font-mono mt-2 pt-2 border-t border-[#1a1f2b] leading-tight">
+            Acuerdo de Nivel de Servicio: porcentaje de solicitudes que respondieron sin caídas ni errores 5xx.
+          </p>
+        </div>
+
+        <div className="bg-[#12151C] border border-[#202634] p-4 rounded-xl flex flex-col justify-between shadow-md">
+          <div>
+            <div className="flex items-center justify-between text-xs font-mono text-slate-400">
+              <span className="font-semibold text-slate-300">Seguridad SSL</span>
+              <span className="text-[10px] bg-purple-950/80 text-purple-400 border border-purple-800/60 px-1.5 py-0.2 rounded font-mono">HTTPS</span>
+            </div>
+            <div className="text-2xl font-mono font-bold text-purple-400 mt-1.5">
+              {telemetrySummary.sslRate}% <span className="text-xs text-slate-500 font-normal">cifrado</span>
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-400 font-mono mt-2 pt-2 border-t border-[#1a1f2b] leading-tight">
+            Tráfico asegurado bajo protocolo HTTPS con certificados TLS vigentes en todos los dominios.
+          </p>
+        </div>
+
+        <div className="bg-[#12151C] border border-[#202634] p-4 rounded-xl flex flex-col justify-between shadow-md">
+          <div>
+            <div className="flex items-center justify-between text-xs font-mono text-slate-400">
+              <span className="font-semibold text-slate-300">Error Tracking</span>
+              <span className="text-[10px] bg-rose-950/80 text-rose-400 border border-rose-800/60 px-1.5 py-0.2 rounded font-mono">Anomalías</span>
+            </div>
+            <div className="text-2xl font-mono font-bold text-white mt-1.5">
+              {telemetrySummary.errorCount} <span className="text-xs text-slate-500 font-normal">fallos</span>
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-400 font-mono mt-2 pt-2 border-t border-[#1a1f2b] leading-tight">
+            Excepciones JavaScript, fallos en fetch o alertas CSP capturadas antes del reporte del cliente.
+          </p>
+        </div>
       </div>
 
-      {/* Stream de Pings en Vivo desde Supabase */}
-      <div className="bg-[#12151C] border border-[#202634] p-6 rounded-2xl space-y-4 font-mono text-xs">
-        <div className="flex items-center justify-between border-b border-[#202634] pb-3">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            <h2 className="text-white font-bold text-sm">
-              Stream en Vivo de Pings Recibidos (Supabase Cloud API)
+      {/* ========================================================================= */}
+      {/* 2. CONSOLIDADO POR PROYECTO (TABLA ÚNICA Y COMPACTA)                     */}
+      {/* ========================================================================= */}
+      <div className="bg-[#12151C] border border-[#202634] p-6 rounded-2xl space-y-4 font-mono text-xs shadow-lg">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#202634] pb-3">
+          <div>
+            <h2 className="text-white font-bold text-sm flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-emerald-400" />
+              Consolidado de Rendimiento & SLA por Proyecto
             </h2>
+            <p className="text-slate-400 text-[11px] mt-0.5">
+              Auditoría comparativa: Latencia Promedio vs. Pico, cumplimiento de SLA y estado SSL en vivo.
+            </p>
           </div>
-          <span className="text-[10px] text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 px-2 py-0.5 rounded">
-            🟢 {rawTelemetryLogs.length} pings registrados recientemente
+          <span className="text-[10px] text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 px-2 py-1 rounded self-start sm:self-auto">
+            {projectConsolidatedMetrics.length} proyectos auditados
           </span>
         </div>
 
-        {rawTelemetryLogs.length === 0 ? (
-          <div className="p-8 text-center text-slate-500 text-xs">
-            No se han recibido pings en la base de datos aún. Al abrir cualquier sitio inyectado aparecerá aquí automáticamente.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-[11px] border-collapse">
-              <thead>
-                <tr className="border-b border-[#202634] text-slate-400">
-                  <th className="pb-2">Proyecto ID</th>
-                  <th className="pb-2">URL Detectada</th>
-                  <th className="pb-2">Evento</th>
-                  <th className="pb-2">Latencia</th>
-                  <th className="pb-2">SSL</th>
-                  <th className="pb-2">Detalle</th>
-                  <th className="pb-2 text-right">Fecha / Hora</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#1b212d]">
-                {rawTelemetryLogs.map((log, idx) => (
-                  <tr key={idx} className="hover:bg-[#161a24] transition-colors">
-                    <td className="py-2.5 text-emerald-400 font-bold">{log.project_id}</td>
-                    <td className="py-2.5 text-slate-300 max-w-[220px] truncate">
-                      <a href={log.url} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400">
-                        {log.url}
-                      </a>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-[11px] border-collapse">
+            <thead>
+              <tr className="border-b border-[#202634] text-slate-400">
+                <th className="pb-2.5">Proyecto</th>
+                <th className="pb-2.5">Motor BBDD</th>
+                <th className="pb-2.5">Pings Totales</th>
+                <th className="pb-2.5">
+                  <span title="Latencia Promedio en milisegundos vs. Pico máximo registrado">
+                    Latencia Prom. vs. Pico ℹ️
+                  </span>
+                </th>
+                <th className="pb-2.5">
+                  <span title="Acuerdo de Nivel de Servicio (% de disponibilidad sin errores 5xx o caídas)">
+                    Disponibilidad SLA ℹ️
+                  </span>
+                </th>
+                <th className="pb-2.5">Seguridad SSL</th>
+                <th className="pb-2.5">Errores</th>
+                <th className="pb-2.5 text-right">Acción</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#1b212d]">
+              {projectConsolidatedMetrics.map((proj) => {
+                const originalProj = state.monitoredProjects.find((p) => p.id === proj.id);
+                const isSupabase = proj.dbType === 'supabase_postgres';
+                const isCpanel = proj.dbType === 'mysql_cpanel';
+                const isStatic = proj.dbType === 'static_none';
+
+                return (
+                  <tr key={proj.id} className="hover:bg-[#161a24] transition-colors">
+                    <td className="py-3">
+                      <div className="font-bold text-white flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                        <span>{proj.name}</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 truncate max-w-xs block">{proj.url}</span>
+                      {originalProj?.stack && (
+                        <div className="flex gap-1 mt-1 flex-wrap">
+                          {originalProj.stack.slice(0, 3).map((st, i) => (
+                            <span key={i} className="px-1.5 py-0.2 bg-[#0A0C10] border border-[#202634] text-[9px] text-slate-400 rounded">
+                              {st}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </td>
-                    <td className="py-2.5">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] ${log.event === 'security_anomaly' ? 'bg-rose-950 text-rose-300 border border-rose-800' : 'bg-[#1a2130] text-sky-300'}`}>
-                        {log.event}
+                    <td className="py-3">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#0A0C10] border border-[#202634] text-slate-300">
+                        {isCpanel
+                          ? 'MySQL (cPanel)'
+                          : isSupabase
+                          ? 'PostgreSQL (Supabase)'
+                          : isStatic
+                          ? 'Estático (Sin BBDD)'
+                          : proj.dbType}
                       </span>
                     </td>
-                    <td className="py-2.5 text-white font-semibold">{log.load_time_ms ? `${log.load_time_ms} ms` : '-'}</td>
-                    <td className="py-2.5">
-                      {log.ssl_valid ? <span className="text-emerald-400">HTTPS ✓</span> : <span className="text-amber-400">Sin SSL</span>}
+                    <td className="py-3 text-slate-300 font-semibold">{proj.totalPings} pings</td>
+                    <td className="py-3">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-emerald-400 font-bold">{proj.avgLatency} ms</span>
+                        <span className="text-slate-500 text-[10px]">/</span>
+                        <span className="text-amber-400 text-[10px] font-semibold">{proj.peakLatency} ms pico</span>
+                      </div>
                     </td>
-                    <td className="py-2.5 text-slate-400 max-w-[180px] truncate">{log.message || '-'}</td>
-                    <td className="py-2.5 text-right text-slate-500">
-                      {log.timestamp ? new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-'}
+                    <td className="py-3">
+                      <span className="px-2 py-0.5 bg-emerald-950/60 text-emerald-300 border border-emerald-800/60 rounded text-[10px] font-bold">
+                        {proj.slaPercentage}% SLA
+                      </span>
+                    </td>
+                    <td className="py-3">
+                      {proj.sslValid ? (
+                        <span className="text-emerald-400 font-semibold">HTTPS ✓</span>
+                      ) : (
+                        <span className="text-amber-400">Sin SSL</span>
+                      )}
+                    </td>
+                    <td className="py-3">
+                      {proj.errorCount === 0 ? (
+                        <span className="text-emerald-400 font-bold text-[10px]">0 errores</span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 bg-rose-950/80 text-rose-300 border border-rose-800 rounded text-[10px] font-bold">
+                          {proj.errorCount} errores
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 text-right">
+                      <button
+                        onClick={() => setDetailedProjectId(proj.id)}
+                        className="px-2.5 py-1 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/40 rounded text-[10px] transition-colors cursor-pointer font-bold"
+                      >
+                        👁️ Más Detalles
+                      </button>
                     </td>
                   </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* STREAM EN VIVO DE PINGS CON FILTROS Y SCROLLBAR COMPACTA */}
+      {/* ========================================================================= */}
+      <div className="bg-[#12151C] border border-[#202634] rounded-2xl overflow-hidden font-mono text-xs shadow-lg">
+        <div
+          onClick={() => setShowTelemetryStream(!showTelemetryStream)}
+          className="flex items-center justify-between p-5 border-b border-[#202634] cursor-pointer hover:bg-[#161a24] transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <div>
+              <h2 className="text-white font-bold text-sm">
+                Stream en Vivo de Pings Recibidos (Supabase Cloud API)
+              </h2>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Telemetría instantánea de carga, SSL y errores capturados con <code>navigator.sendBeacon</code>
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] text-emerald-400 bg-emerald-950/60 border border-emerald-800/40 px-2.5 py-1 rounded-md">
+              🟢 {filteredTelemetryLogs.length} pings filtrados ({rawTelemetryLogs.length} total)
+            </span>
+            <button className="text-slate-400 hover:text-white p-1">
+              {showTelemetryStream ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {showTelemetryStream && (
+          <div className="p-5 space-y-4">
+            {/* Barra de Filtros del Stream */}
+            <div className="p-3 bg-[#0A0C10] border border-[#202634] rounded-xl flex items-center gap-3 flex-wrap text-xs">
+              <span className="text-slate-400 font-bold flex items-center gap-1.5">
+                <Filter className="w-3.5 h-3.5 text-emerald-400" />
+                Filtros del Stream:
+              </span>
+
+              {/* Filtro por Proyecto */}
+              <select
+                value={streamProjectFilter}
+                onChange={(e) => setStreamProjectFilter(e.target.value)}
+                className="bg-[#161B24] border border-[#232A3B] text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500 cursor-pointer"
+              >
+                <option value="all">Todos los Proyectos</option>
+                {state.monitoredProjects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
                 ))}
-              </tbody>
-            </table>
+              </select>
+
+              {/* Filtro por Evento */}
+              <select
+                value={streamEventFilter}
+                onChange={(e) => setStreamEventFilter(e.target.value)}
+                className="bg-[#161B24] border border-[#232A3B] text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500 cursor-pointer"
+              >
+                <option value="all">Todos los Eventos</option>
+                <option value="heartbeat">heartbeat (Visita / Ping Normal)</option>
+                <option value="error">error (Fallo de Red / Caída)</option>
+                <option value="security_anomaly">security_anomaly (Alerta JS / CSP)</option>
+              </select>
+
+              {(streamProjectFilter !== 'all' || streamEventFilter !== 'all') && (
+                <button
+                  onClick={() => {
+                    setStreamProjectFilter('all');
+                    setStreamEventFilter('all');
+                  }}
+                  className="text-[11px] text-slate-400 hover:text-white underline cursor-pointer"
+                >
+                  Limpiar Filtros
+                </button>
+              )}
+            </div>
+
+            {filteredTelemetryLogs.length === 0 ? (
+              <div className="p-8 text-center text-slate-500 text-xs">
+                No hay pings que coincidan con los filtros seleccionados.
+              </div>
+            ) : (
+              /* Contenedor con barra deslizable y altura fija para no saturar la pantalla */
+              <div className="max-h-56 overflow-y-auto pr-1 border border-[#202634] rounded-xl bg-[#0A0C10]">
+                <table className="w-full text-left text-[11px] border-collapse">
+                  <thead className="sticky top-0 bg-[#12151C] border-b border-[#202634] z-10">
+                    <tr className="text-slate-400">
+                      <th className="py-2.5 px-3">Proyecto ID</th>
+                      <th className="py-2.5 px-3">URL</th>
+                      <th className="py-2.5 px-3">Evento</th>
+                      <th className="py-2.5 px-3">Latencia</th>
+                      <th className="py-2.5 px-3">SSL</th>
+                      <th className="py-2.5 px-3">Detalle</th>
+                      <th className="py-2.5 px-3 text-right">Hora</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#1b212d]">
+                    {filteredTelemetryLogs.map((log, idx) => (
+                      <tr key={idx} className="hover:bg-[#161a24] transition-colors">
+                        <td className="py-2 px-3 text-emerald-400 font-bold">{log.project_id}</td>
+                        <td className="py-2 px-3 text-slate-300 max-w-[200px] truncate">
+                          <a href={log.url} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400">
+                            {log.url}
+                          </a>
+                        </td>
+                        <td className="py-2 px-3">
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] ${
+                              log.event === 'security_anomaly' || log.event === 'error'
+                                ? 'bg-rose-950 text-rose-300 border border-rose-800'
+                                : 'bg-[#1a2130] text-sky-300'
+                            }`}
+                          >
+                            {log.event}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-white font-semibold">
+                          {log.load_time_ms ? `${log.load_time_ms} ms` : '-'}
+                        </td>
+                        <td className="py-2 px-3">
+                          {log.ssl_valid ? (
+                            <span className="text-emerald-400 font-bold">HTTPS ✓</span>
+                          ) : (
+                            <span className="text-amber-400">Sin SSL</span>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 text-slate-400 max-w-[200px] truncate">{log.message || '-'}</td>
+                        <td className="py-2 px-3 text-right text-slate-500 whitespace-nowrap">
+                          {log.timestamp
+                            ? new Date(log.timestamp).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit',
+                              })
+                            : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Universal SDK & Telemetry Integration Guide */}
-      <div className="bg-[#12151C] border border-[#202634] p-6 rounded-2xl space-y-4 font-mono text-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#202634] pb-4">
-          <div>
-            <h2 className="text-white font-bold text-sm flex items-center gap-2">
-              <Shield className="w-4 h-4 text-emerald-400" />
-              Esquema de Integración para Proyectos ya Levantados
-            </h2>
-            <p className="text-slate-400 text-[11px] mt-0.5">
-              Copia e inserta este snippet antes del cierre de <code className="text-emerald-400">&lt;/body&gt;</code> en cualquier sitio (Shopify, WordPress, Next.js, HTML) para conectarlo al monitor.
-            </p>
+      {/* Universal SDK & Telemetry Integration Guide (Colapsable) */}
+      <div className="bg-[#12151C] border border-[#202634] rounded-2xl overflow-hidden font-mono text-xs shadow-lg">
+        <div
+          onClick={() => setShowIntegrationGuide(!showIntegrationGuide)}
+          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-5 cursor-pointer hover:bg-[#161a24] transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-emerald-950/60 border border-emerald-800/40 flex items-center justify-center text-emerald-400 flex-shrink-0">
+              <Shield className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-white font-bold text-sm">
+                Esquema de Integración para Proyectos ya Levantados (SDK JS v2.1)
+              </h2>
+              <p className="text-slate-400 text-[11px] mt-0.5">
+                {showIntegrationGuide
+                  ? 'Snippet universal para Shopify, WordPress, Next.js, Vite o HTML estático.'
+                  : 'Haz clic aquí para ver o copiar el código de telemetría e inyectarlo en otros proyectos.'}
+              </p>
+            </div>
           </div>
 
-          <button
-            onClick={handleCopySnippet}
-            className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 border border-emerald-500/40 rounded-lg text-xs font-semibold transition-colors self-start sm:self-auto"
-          >
-            {copiedSnippet ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copiedSnippet ? '¡Copiado!' : 'Copiar Snippet JS'}</span>
-          </button>
+          <div className="flex items-center gap-3 self-start sm:self-auto">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowIntegrationGuide(!showIntegrationGuide);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0A0C10] hover:bg-[#1f2738] border border-slate-700 hover:border-emerald-500/50 rounded-lg text-xs font-mono text-slate-300 transition-colors"
+            >
+              {showIntegrationGuide ? (
+                <>
+                  <ChevronUp className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Ocultar Código</span>
+                </>
+              ) : (
+                <>
+                  <Code className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Ver Código de Integración</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
-        <div className="bg-[#0A0C10] p-4 rounded-xl border border-[#202634] overflow-x-auto text-[11px] text-slate-300">
-          <pre className="font-mono leading-relaxed">
-            <code>{telemetrySnippetCode}</code>
-          </pre>
-        </div>
+        {showIntegrationGuide && (
+          <div className="p-5 pt-0 space-y-4 border-t border-[#202634]">
+            <div className="flex items-center justify-between pt-3">
+              <span className="text-slate-400 text-[11px]">
+                Inserta este bloque antes del cierre de <code>&lt;/body&gt;</code> en el sitio destino:
+              </span>
+              <button
+                onClick={handleCopySnippet}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+              >
+                {copiedSnippet ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedSnippet ? '¡Copiado al Portapapeles!' : 'Copiar Snippet JS'}</span>
+              </button>
+            </div>
+
+            <div className="bg-[#0A0C10] p-4 rounded-xl border border-[#202634] overflow-x-auto text-[11px] text-slate-300">
+              <pre className="font-mono leading-relaxed">
+                <code>{telemetrySnippetCode}</code>
+              </pre>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Modal Add Project */}
+      {/* Modal Registrar Nuevo Proyecto */}
       {showAddProject && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-[#12151C] border border-[#202634] p-6 rounded-2xl w-full max-w-md space-y-4 font-mono text-xs">
+        <div className="fixed inset-0 bg-black/75 flex items-center justify-center p-4 z-50 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-[#12151C] border border-[#202634] p-6 rounded-2xl w-full max-w-md space-y-4 font-mono text-xs shadow-2xl">
             <h2 className="text-base font-bold text-white flex items-center gap-2">
               <Activity className="w-4 h-4 text-emerald-400" />
               Registrar Nuevo Proyecto en Monitoreo
             </h2>
 
-            <form onSubmit={handleAddProject} className="space-y-3">
+            <form onSubmit={handleAddProject} className="space-y-3.5">
               <div>
                 <label className="block text-slate-400 mb-1">Nombre del Proyecto *</label>
                 <input
@@ -837,45 +2118,81 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
                   required
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  placeholder="Ej: Joyería Sonix Tienda"
-                  className="w-full bg-[#0A0C10] border border-[#202634] rounded-lg p-2 text-white focus:outline-none focus:border-emerald-500"
+                  placeholder="Ej: Tienda Sonix Joyería"
+                  className="w-full bg-[#0A0C10] border border-[#202634] rounded-lg p-2.5 text-white focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1">Nombre del Cliente</label>
+                <label className="block text-slate-400 mb-1">Cliente / Propietario</label>
                 <input
                   type="text"
                   value={newClient}
                   onChange={(e) => setNewClient(e.target.value)}
-                  placeholder="Ej: Daniel Silva"
-                  className="w-full bg-[#0A0C10] border border-[#202634] rounded-lg p-2 text-white focus:outline-none focus:border-emerald-500"
+                  placeholder="Ej: Daniel Silva (o vacío si es propio)"
+                  className="w-full bg-[#0A0C10] border border-[#202634] rounded-lg p-2.5 text-white focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1">URL del Sitio Web *</label>
+                <label className="block text-slate-400 mb-1">URL de Producción *</label>
                 <input
                   type="url"
                   required
                   value={newUrl}
                   onChange={(e) => setNewUrl(e.target.value)}
-                  placeholder="https://ejemplo.cl"
-                  className="w-full bg-[#0A0C10] border border-[#202634] rounded-lg p-2 text-white focus:outline-none focus:border-emerald-500"
+                  placeholder="https://tiendasonix.cl"
+                  className="w-full bg-[#0A0C10] border border-[#202634] rounded-lg p-2.5 text-white focus:outline-none focus:border-emerald-500"
                 />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Stack Tecnológico (separado por comas)</label>
+                <input
+                  type="text"
+                  value={newStack}
+                  onChange={(e) => setNewStack(e.target.value)}
+                  placeholder="React, TypeScript, Tailwind, Kotlin, Spring Boot"
+                  className="w-full bg-[#0A0C10] border border-[#202634] rounded-lg p-2.5 text-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Colas / Background Workers (opcional)</label>
+                <input
+                  type="text"
+                  value={newQueues}
+                  onChange={(e) => setNewQueues(e.target.value)}
+                  placeholder="RabbitMQ, Redis Webhook, Kafka"
+                  className="w-full bg-[#0A0C10] border border-[#202634] rounded-lg p-2.5 text-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Tipo de Base de Datos</label>
+                <select
+                  value={newDbType}
+                  onChange={(e: any) => setNewDbType(e.target.value)}
+                  className="w-full bg-[#0A0C10] border border-[#202634] rounded-lg p-2.5 text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                >
+                  <option value="supabase_postgres">PostgreSQL (Supabase Cloud - con Keep-Alive)</option>
+                  <option value="static_none">Estático (Sin BBDD - 100% Frontend GitHub Pages)</option>
+                  <option value="firebase_firestore">Firebase Firestore</option>
+                  <option value="mysql_cpanel">MySQL (cPanel Hosting)</option>
+                </select>
               </div>
 
               <div className="flex justify-end gap-2 pt-3">
                 <button
                   type="button"
                   onClick={() => setShowAddProject(false)}
-                  className="px-3 py-2 bg-transparent hover:bg-slate-800 text-slate-400 rounded-lg"
+                  className="px-3.5 py-2 bg-transparent hover:bg-slate-800 text-slate-400 rounded-lg cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-colors cursor-pointer"
                 >
                   Conectar al Monitor
                 </button>

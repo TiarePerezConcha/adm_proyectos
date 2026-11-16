@@ -145,6 +145,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <HelpCircle className="w-4 h-4" />
               <span>FAQs & Base de Conocimiento</span>
             </button>
+
+            <button
+              onClick={() => onAdminTabChange('configuracion')}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-xs font-medium transition-all ${
+                adminTab === 'configuracion'
+                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                  : 'hover:bg-[#151922] text-slate-400 hover:text-white'
+              }`}
+            >
+              <Settings className="w-4 h-4 text-emerald-400" />
+              <span>Configuración & APIs</span>
+            </button>
           </nav>
         </div>
 
@@ -328,21 +340,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               <Monitor className="w-3.5 h-3.5 text-[#DD8396]" />
               <span>Maquetas Interactivas</span>
-            </button>
-          </div>
-
-          {/* Configuración IA & APIs */}
-          <div className="pt-2">
-            <button
-              onClick={() => onStudioTabChange('configuracion')}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                studioTab === 'configuracion'
-                  ? 'bg-slate-100 text-slate-900 font-semibold'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-              }`}
-            >
-              <Settings className="w-3.5 h-3.5 text-slate-500" />
-              <span>Configuración & APIs</span>
             </button>
           </div>
         </nav>

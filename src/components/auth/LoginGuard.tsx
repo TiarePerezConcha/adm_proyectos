@@ -31,7 +31,7 @@ interface LoginGuardProps {
 
 const GOOGLE_CLIENT_ID = (
   (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID ||
-  '792714090876-h7p0l4m506ullk46q6f0bmahnam1cik3.apps.googleusercontent.com'
+  '792714090876-n3d5t7gk4bnis9njej9jad7sr4fjj9ak.apps.googleusercontent.com'
 ).trim();
 
 // Decodifica el token JWT emitido y firmado por Google Identity Services
