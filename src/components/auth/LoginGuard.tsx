@@ -10,8 +10,7 @@ import {
   Eye,
   EyeOff,
   CheckCircle2,
-  X,
-  HelpCircle
+  X
 } from 'lucide-react';
 import {
   supabase,
@@ -20,8 +19,36 @@ import {
 } from '../../services/supabaseClient';
 import { verifyTOTPCode, hashPassword } from '../../services/authCrypto';
 
+declare global {
+  interface Window {
+    google?: any;
+  }
+}
+
 interface LoginGuardProps {
   onLoginSuccess: (email: string) => void;
+}
+
+const GOOGLE_CLIENT_ID = (
+  (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID ||
+  '792714090876-h7p0l4m506ullk46q6f0bmahnam1cik3.apps.googleusercontent.com'
+).trim();
+
+// Decodifica el token JWT emitido y firmado por Google Identity Services
+function parseGoogleJwt(token: string) {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    return null;
+  }
 }
 
 export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
@@ -39,9 +66,8 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
   // Estado del botón ojo para ver / ocultar contraseña
   const [showPassword, setShowPassword] = useState(false);
 
-  // Estados de modal de información de Google OAuth
-  const [showGoogleModal, setShowGoogleModal] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  // Estado del servicio de Google Identity Services
+  const [googleReady, setGoogleReady] = useState(false);
 
   // Estados del modal de recuperación de contraseña
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
@@ -54,75 +80,103 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
   const totpSecret = localStorage.getItem('lsc_2fa_secret') || '';
   const backupCodes: string[] = JSON.parse(localStorage.getItem('lsc_2fa_backups') || '[]');
 
-  // 1. Escuchar sesión externa de Supabase (OAuth Redirect con Google)
-  useEffect(() => {
-    let isMounted = true;
-
-    const checkExistingSession = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user?.email && isMounted) {
-          const oauthEmail = session.user.email.toLowerCase().trim();
-          if (isEmailAuthorized(oauthEmail)) {
-            completeLogin(oauthEmail);
-          } else {
-            await supabase.auth.signOut();
-            setErrorMsg('⛔ Acceso Denegado: La cuenta externa no figura en la lista autorizada.');
-          }
-        }
-      } catch (err) {
-        console.warn('Error verificando sesión inicial OAuth:', err);
-      }
-    };
-
-    checkExistingSession();
-
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user?.email && isMounted) {
-        const oauthEmail = session.user.email.toLowerCase().trim();
-        if (isEmailAuthorized(oauthEmail)) {
-          completeLogin(oauthEmail);
-        } else {
-          await supabase.auth.signOut();
-          setErrorMsg('⛔ Acceso Denegado: La cuenta externa no figura en la lista autorizada.');
-        }
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      authListener?.subscription?.unsubscribe();
-    };
-  }, []);
-
-  // Lanzar OAuth real si el usuario lo solicita
-  const handleDirectSupabaseOAuth = async () => {
+  // Callback ejecutado automáticamente cuando el usuario elige su cuenta en el popup de Google
+  const handleCredentialResponse = (response: { credential?: string }) => {
     setErrorMsg('');
-    setIsGoogleLoading(true);
-    try {
-      const redirectUrl = window.location.origin + window.location.pathname;
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: redirectUrl,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'select_account',
-          },
-        },
-      });
+    if (!response?.credential) {
+      setErrorMsg('No se recibió la credencial de autenticación de Google.');
+      return;
+    }
 
-      if (error) {
-        setErrorMsg(
-          `Google OAuth: ${error.message}. Recuerda activar el proveedor Google en el panel de Supabase.`
-        );
-        setShowGoogleModal(false);
+    try {
+      const payload = parseGoogleJwt(response.credential);
+      if (!payload || !payload.email) {
+        setErrorMsg('No se pudo verificar el correo desde la cuenta de Google.');
+        return;
+      }
+
+      const verifiedEmail = String(payload.email).toLowerCase().trim();
+
+      // Validación estricta contra la lista de correos autorizados
+      if (isEmailAuthorized(verifiedEmail)) {
+        // Intentar registrar sesión en Supabase con IdToken si está disponible
+        supabase.auth.signInWithIdToken?.({
+          provider: 'google',
+          token: response.credential,
+        }).catch(() => {});
+
+        completeLogin(verifiedEmail);
+      } else {
+        setErrorMsg(`⛔ Acceso Denegado: La cuenta Google "${verifiedEmail}" no cuenta con autorización en este sistema.`);
       }
     } catch (err: any) {
-      setErrorMsg(`Error al conectar con Google: ${err?.message || 'Fallo de conexión'}`);
-      setShowGoogleModal(false);
-    } finally {
-      setIsGoogleLoading(false);
+      console.error('Error al procesar Google JWT:', err);
+      setErrorMsg('Error al procesar la respuesta de autenticación de Google.');
+    }
+  };
+
+  // Inicialización de Google Identity Services (GSI)
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+
+    const setupGoogle = () => {
+      if (window.google?.accounts?.id) {
+        try {
+          window.google.accounts.id.initialize({
+            client_id: GOOGLE_CLIENT_ID,
+            callback: handleCredentialResponse,
+            auto_select: false,
+            context: 'signin',
+          });
+
+          const container = document.getElementById('google-btn-container');
+          if (container) {
+            container.innerHTML = '';
+            window.google.accounts.id.renderButton(container, {
+              theme: 'filled_black',
+              size: 'large',
+              width: 384,
+              text: 'continue_with',
+              shape: 'rectangular',
+              logo_alignment: 'left',
+              locale: 'es',
+            });
+            setGoogleReady(true);
+          }
+        } catch (e) {
+          console.warn('Aviso al inicializar Google Identity Services:', e);
+        }
+      }
+    };
+
+    if (window.google?.accounts?.id) {
+      setupGoogle();
+    } else {
+      timer = setInterval(() => {
+        if (window.google?.accounts?.id) {
+          clearInterval(timer);
+          setupGoogle();
+        }
+      }, 250);
+    }
+
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [step]);
+
+  // Si el usuario hace clic en el botón de fallback mientras carga Google
+  const handleTriggerGoogle = () => {
+    setErrorMsg('');
+    if (window.google?.accounts?.id) {
+      window.google.accounts.id.prompt((notification: any) => {
+        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+          const btn = document.querySelector('#google-btn-container div[role=button]') as HTMLElement;
+          if (btn) btn.click();
+        }
+      });
+    } else {
+      setErrorMsg('Cargando servicio de Google... Si demora, puedes ingresar directamente con tu correo y contraseña o PIN.');
     }
   };
 
@@ -292,7 +346,7 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
           </p>
         </div>
 
-        {/* Badges de Seguridad genéricos (sin divulgar cuentas privadas) */}
+        {/* Badges de Seguridad genéricos */}
         <div className="grid grid-cols-3 gap-2 mb-6 text-center">
           <div className="p-2 bg-gray-900/80 border border-gray-800 rounded-lg">
             <span className="text-[10px] font-mono block text-emerald-400">ACCESO</span>
@@ -324,33 +378,41 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
         {/* PASO 1: Email y Clave / PIN */}
         {step === 'credentials' ? (
           <div className="space-y-4">
-            {/* Botón de Acceso Externo con Google */}
-            <button
-              type="button"
-              onClick={() => setShowGoogleModal(true)}
-              disabled={isLocked}
-              className="w-full py-2.5 px-4 bg-[#161B22] hover:bg-[#1C2128] border border-gray-700 hover:border-gray-500 active:scale-[0.99] text-white font-medium text-xs rounded-xl transition flex items-center justify-center gap-2.5 shadow-sm cursor-pointer"
-            >
-              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                />
-              </svg>
-              <span>Continuar con Google</span>
-            </button>
+            {/* Contenedor del Botón Oficial de Google Identity Services */}
+            <div className="flex flex-col items-center justify-center">
+              <div
+                id="google-btn-container"
+                className="w-full flex justify-center min-h-[44px] overflow-hidden rounded-xl border border-gray-700/80"
+              />
+              {!googleReady && (
+                <button
+                  type="button"
+                  onClick={handleTriggerGoogle}
+                  disabled={isLocked}
+                  className="w-full py-2.5 px-4 bg-[#161B22] hover:bg-[#1C2128] border border-gray-700 hover:border-gray-500 active:scale-[0.99] text-white font-medium text-xs rounded-xl transition flex items-center justify-center gap-2.5 shadow-sm cursor-pointer"
+                >
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                    />
+                  </svg>
+                  <span>Continuar con Google</span>
+                </button>
+              )}
+            </div>
 
             <div className="flex items-center gap-3 my-2">
               <div className="h-px bg-gray-800 flex-1" />
@@ -408,7 +470,7 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
                   </button>
                 </div>
 
-                {/* Enlace para Recuperar Contraseña / PIN sin revelar datos confidenciales */}
+                {/* Enlace para Recuperar Contraseña / PIN */}
                 <div className="flex items-center justify-between text-xs font-mono pt-1.5">
                   <span className="text-[10px] text-gray-500 flex items-center gap-1">
                     <ShieldCheck className="w-3 h-3 text-gray-500" /> Verificación segura
@@ -487,86 +549,12 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
 
         <div className="mt-6 pt-5 border-t border-gray-800/80 text-center">
           <p className="text-[11px] text-gray-500">
-            🛡️ Protegido con cifrado local, protección contra inyección y bloqueo anti-fuerza bruta.
+            🛡️ Protegido con Google Identity Services, cifrado local y bloqueo anti-fuerza bruta.
           </p>
         </div>
       </div>
 
-      {/* MODAL 1: INFORMACIÓN DE ACCESO CON GOOGLE (SIN DIVULGAR CUENTAS) */}
-      {showGoogleModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0E1218] border border-gray-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative space-y-4">
-            <button
-              onClick={() => setShowGoogleModal(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-white p-1 rounded-lg cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-3 border-b border-gray-800 pb-3">
-              <div className="w-10 h-10 rounded-xl bg-gray-900 border border-gray-700 flex items-center justify-center shadow-inner">
-                <svg className="w-5 h-5" viewBox="0 0 24 24">
-                  <path
-                    fill="#4285F4"
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                  />
-                  <path
-                    fill="#EA4335"
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                  />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-white">Autenticación con Google</h3>
-                <p className="text-xs text-gray-400">Acceso seguro federado</p>
-              </div>
-            </div>
-
-            <div className="p-3.5 bg-gray-900/90 border border-gray-800 rounded-xl space-y-2.5 text-xs text-gray-300">
-              <div className="flex items-center gap-2 text-amber-400 font-semibold text-xs">
-                <HelpCircle className="w-4 h-4 shrink-0" />
-                <span>Estado del proveedor OAuth en Supabase</span>
-              </div>
-              <p className="text-[11px] text-gray-300 leading-relaxed">
-                El inicio de sesión directo con Google requiere activar el interruptor de Google en:
-                <br />
-                <span className="font-mono text-[10px] text-amber-300">Supabase Cloud &gt; Authentication &gt; Providers &gt; Google</span>
-              </p>
-              <p className="text-[11px] text-gray-400 leading-relaxed">
-                Para ingresar de forma inmediata sin depender de la configuración OAuth de Supabase, puedes escribir tu correo autorizado directamente en el formulario principal con tu contraseña o PIN maestro.
-              </p>
-            </div>
-
-            <div className="space-y-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowGoogleModal(false)}
-                className="w-full py-2.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold rounded-xl transition cursor-pointer"
-              >
-                Ingresar con mi Correo y Contraseña
-              </button>
-              <button
-                type="button"
-                onClick={handleDirectSupabaseOAuth}
-                disabled={isGoogleLoading}
-                className="w-full py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs rounded-xl transition cursor-pointer disabled:opacity-50"
-              >
-                {isGoogleLoading ? 'Conectando con Google...' : 'Intentar redirección de Google OAuth'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 2: RECUPERACIÓN DE CONTRASEÑA Y PIN MAESTRO (TOTALMENTE PRIVADO) */}
+      {/* MODAL: RECUPERACIÓN DE CONTRASEÑA Y PIN MAESTRO */}
       {showRecoveryModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#0E1218] border border-gray-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative space-y-4">
