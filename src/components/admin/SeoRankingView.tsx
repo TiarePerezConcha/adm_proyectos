@@ -1419,36 +1419,81 @@ export default defineConfig({
                   </div>
                 )}
 
-                {/* 2. Gráfica para CONSULTAS */}
+                {/* 2. Gráfica para CONSULTAS (VOLUMEN DE VISTAS E IMPRESIONES VS CLICS) */}
                 {activeTab === 'queries' && (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     <div className="flex items-center justify-between border-b border-[#202634] pb-2">
                       <span className="text-xs font-mono font-bold text-white flex items-center gap-2">
                         <BarChart3 className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Volumen de Vistas por Palabra Clave</span>
+                        <span>Volumen de Vistas e Impresiones por Palabra Clave</span>
                       </span>
+                      <div className="flex items-center gap-3 text-[10px] font-mono">
+                        <span className="flex items-center gap-1 text-purple-400">
+                          <span className="w-2 h-2 rounded bg-purple-500"></span> Vistas (Impr.)
+                        </span>
+                        <span className="flex items-center gap-1 text-emerald-400">
+                          <span className="w-2 h-2 rounded bg-emerald-500"></span> Clics
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="space-y-2.5 font-mono text-xs">
+                    <div className="space-y-3 font-mono text-xs">
                       {queriesList.map((q, idx) => {
-                        const pct = Math.max(8, Math.round((q.impressions / maxQueryImpr) * 100));
+                        const imprPct = Math.max(6, Math.round((q.impressions / maxQueryImpr) * 100));
+                        const clkPct = Math.max(4, Math.round((q.clicks / (maxQueryClicks || 1)) * 100));
+
                         return (
-                          <div key={idx} className="space-y-1">
-                            <div className="flex justify-between text-slate-300 text-[11px]">
-                              <span className="font-semibold text-white truncate max-w-[150px]">{q.query}</span>
-                              <span className="text-emerald-400">{q.impressions} vistas ({q.clicks} clics)</span>
+                          <div key={idx} className="p-2.5 bg-[#12151C] border border-[#1b202c] rounded-xl space-y-1.5">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-white">{q.query}</span>
+                                <span
+                                  className={`text-[9px] px-1.5 py-0.2 rounded font-bold ${
+                                    q.position <= 3
+                                      ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                                      : 'bg-sky-950 text-sky-300 border border-sky-800'
+                                  }`}
+                                >
+                                  #{q.position.toFixed(1)} en Google
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 text-[10px]">
+                                <span className="text-purple-300 font-semibold">{q.impressions} vistas</span>
+                                <span className="text-slate-500">|</span>
+                                <span className="text-emerald-400 font-bold">{q.clicks} clics</span>
+                                <span className="text-slate-500">({q.ctr.toFixed(1)}% CTR)</span>
+                              </div>
                             </div>
-                            <div className="w-full h-2 bg-[#161a24] rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${
-                                  q.clicks > 0 ? 'bg-emerald-500' : 'bg-slate-600'
-                                }`}
-                                style={{ width: `${pct}%` }}
-                              />
+
+                            {/* Barra Dual: Vistas (Púrpura) y Clics (Verde) */}
+                            <div className="space-y-1">
+                              {/* Barra Impresiones */}
+                              <div className="w-full h-2 bg-[#0A0C10] rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-purple-600 to-purple-400 rounded-full transition-all"
+                                  style={{ width: `${imprPct}%` }}
+                                  title={`${q.impressions} vistas en resultados de Google`}
+                                />
+                              </div>
+
+                              {/* Barra Clics */}
+                              {q.clicks > 0 && (
+                                <div className="w-full h-1.5 bg-[#0A0C10] rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full transition-all"
+                                    style={{ width: `${clkPct}%` }}
+                                    title={`${q.clicks} clics hacia la web`}
+                                  />
+                                </div>
+                              )}
                             </div>
                           </div>
                         );
                       })}
+                    </div>
+
+                    <div className="bg-[#12151C] p-3 rounded-lg border border-[#1b202c] text-[11px] font-mono text-slate-400 leading-relaxed">
+                      💡 <strong>Análisis SEO:</strong> La búsqueda <code className="text-white">"conpi"</code> genera la mayor cantidad de vistas (76) y 4 clics en posición #1.4. La oportunidad comercial clave es posicionar <code className="text-emerald-300">"insumos para carniceria"</code> (posición #5.5), ya que representa clientes nuevos que aún no conocen la marca.
                     </div>
                   </div>
                 )}

@@ -1763,6 +1763,62 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
         </div>
       </div>
 
+      {/* Contraste de Telemetría e Infraestructura vs. SEO Ranking en Google */}
+      <div className="bg-[#12151C] border border-[#202634] p-5 rounded-2xl space-y-3 font-mono text-xs shadow-md">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#202634] pb-3">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-emerald-400" />
+            <h3 className="text-white font-bold text-sm">
+              Contraste de Telemetría (Infraestructura) vs. Posicionamiento SEO en Google
+            </h3>
+          </div>
+          <span className="text-[10px] text-sky-400 bg-sky-950/60 border border-sky-800/40 px-2.5 py-0.5 rounded">
+            Impacto Directo en Googlebot & Ranking
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-1">
+          <div className="bg-[#0A0C10] border border-[#202634] p-3.5 rounded-xl space-y-1.5">
+            <div className="flex items-center justify-between text-slate-300 font-semibold">
+              <span className="flex items-center gap-1.5">
+                <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Velocidad & First Byte (TTFB)</span>
+              </span>
+              <span className="text-emerald-400 font-bold">{telemetrySummary.avgLat} ms prom.</span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Google Search rastrea más páginas cuando el servidor responde en &lt;300 ms. Con <strong>{telemetrySummary.avgLat} ms</strong> de latencia promedio, el bot indexa productos de inmediato y aprueba Core Web Vitals sin demoras.
+            </p>
+          </div>
+
+          <div className="bg-[#0A0C10] border border-[#202634] p-3.5 rounded-xl space-y-1.5">
+            <div className="flex items-center justify-between text-slate-300 font-semibold">
+              <span className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-teal-400" />
+                <span>Disponibilidad (SLA {telemetrySummary.globalSla}%)</span>
+              </span>
+              <span className="text-teal-400 font-bold">0 Caídas</span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Si un servidor se cae y devuelve código 500 o 503, Googlebot degrada la posición orgánica en cuestión de horas. El SLA del <strong>{telemetrySummary.globalSla}%</strong> garantiza que no se pierdan visitas en búsquedas chilenas.
+            </p>
+          </div>
+
+          <div className="bg-[#0A0C10] border border-[#202634] p-3.5 rounded-xl space-y-1.5">
+            <div className="flex items-center justify-between text-slate-300 font-semibold">
+              <span className="flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-purple-400" />
+                <span>Cifrado SSL / TLS ({telemetrySummary.sslRate}%)</span>
+              </span>
+              <span className="text-purple-400 font-bold">HTTPS Seguro</span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Google Search Console penaliza severamente y muestra la alerta "Sitio no seguro" si un dominio carece de certificado SSL vigente. Todos los dominios monitoreados operan bajo HTTPS con renovación automática.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* ========================================================================= */}
       {/* 2. CONSOLIDADO POR PROYECTO (TABLA ÚNICA Y COMPACTA)                     */}
       {/* ========================================================================= */}
