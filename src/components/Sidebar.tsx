@@ -166,8 +166,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {onLogout && (
             <div className="pt-1 flex items-center justify-between px-1 text-[11px] text-slate-400">
-              <span className="truncate max-w-[150px] font-mono text-emerald-400" title="tiare.perezconcha@gmail.com">
-                🔒 tiare.perezconcha
+              <span
+                className="truncate max-w-[150px] font-mono text-emerald-400"
+                title={sessionStorage.getItem('lsc_authenticated_user') || 'Usuario Autorizado'}
+              >
+                🔒 {(sessionStorage.getItem('lsc_authenticated_user') || 'Usuario').split('@')[0]}
               </span>
               <button
                 onClick={onLogout}
@@ -363,8 +366,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {onLogout && (
           <div className="pt-1 flex items-center justify-between px-1 text-[11px] text-slate-500">
-            <span className="truncate max-w-[150px] font-mono text-emerald-700" title="tiare.perezconcha@gmail.com">
-              🔒 tiare.perezconcha
+            <span
+              className="truncate max-w-[150px] font-mono text-emerald-700"
+              title={sessionStorage.getItem('lsc_authenticated_user') || 'Usuario Autorizado'}
+            >
+              🔒 {(sessionStorage.getItem('lsc_authenticated_user') || 'Usuario').split('@')[0]}
             </span>
             <button
               onClick={onLogout}
