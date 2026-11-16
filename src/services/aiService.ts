@@ -137,7 +137,7 @@ export async function generateWithAI(
   const { prompt, context = '', taskType, providerOverride } = request;
   const activeModel = providerOverride || settings.preferredModel || 'auto';
 
-  // 1. Google Gemini (Gemini 2.5 Flash / 2.0 Flash) - Nivel gratuito Conpi App
+  // 1. Google Gemini (Gemini 2.5 Flash / 2.0 Flash) - Nivel gratuito Proyecto Administrador de Proyectos
   if (
     settings.geminiApiKey &&
     (activeModel === 'gemini' || activeModel === 'auto')

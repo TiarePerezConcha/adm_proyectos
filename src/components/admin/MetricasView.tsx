@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { AppState } from '../../utils/storage';
 import { supabase } from '../../services/supabaseClient';
+import { getAIUsageMetrics } from '../../services/aiService';
 
 interface MetricasViewProps {
   state: AppState;
@@ -65,6 +66,7 @@ export const MetricasView: React.FC<MetricasViewProps> = ({ state }) => {
   // Tester en vivo de la clave Gemini API
   const [isTestingGemini, setIsTestingGemini] = useState(false);
   const [geminiTestFeedback, setGeminiTestFeedback] = useState<{ success: boolean; message: string } | null>(null);
+  const [aiMetrics, setAiMetrics] = useState(getAIUsageMetrics());
 
   // Datos reales derivados del estado activo
   const totalBookings = state.calendarBookings.length;
@@ -74,6 +76,7 @@ export const MetricasView: React.FC<MetricasViewProps> = ({ state }) => {
 
   const fetchRealServerMetrics = async () => {
     setIsSyncing(true);
+    setAiMetrics(getAIUsageMetrics());
     try {
       const { data, count, error } = await supabase
         .from('telemetry_logs')
@@ -99,11 +102,11 @@ export const MetricasView: React.FC<MetricasViewProps> = ({ state }) => {
   const handleTestGeminiKey = async () => {
     setIsTestingGemini(true);
     setGeminiTestFeedback(null);
-    const key = state.settings.geminiApiKey;
+    const key = state.settings?.geminiApiKey?.trim();
     if (!key) {
       setGeminiTestFeedback({
         success: false,
-        message: 'No hay ninguna clave Gemini API guardada en Configuración.',
+        message: 'No hay ninguna clave Gemini API guardada en Configuración & APIs. Para probar la conexión, primero ingresa tu clave en "Configuración > Claves de IA".',
       });
       setIsTestingGemini(false);
       return;
@@ -112,12 +115,14 @@ export const MetricasView: React.FC<MetricasViewProps> = ({ state }) => {
     try {
       // Probar conexión real contra Google Generative Language API
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`
       );
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const count = data?.models?.length || 0;
         setGeminiTestFeedback({
           success: true,
-          message: '✓ Conexión exitosa (200 OK): Tu clave de Google Cloud / Google AI Studio (Proyecto Conpi App) está activa y responde.',
+          message: `✓ Conexión exitosa (200 OK): Tu clave de Google Cloud / Google AI Studio (Proyecto Administrador de Proyectos) está activa y responde (${count} modelos disponibles).`,
         });
       } else {
         const errJson = await res.json().catch(() => ({}));
@@ -156,47 +161,54 @@ export const MetricasView: React.FC<MetricasViewProps> = ({ state }) => {
     }));
 
   const settings = state.settings || ({} as any);
-  const hasGeminiKey = Boolean(settings.geminiApiKey);
+  const hasGeminiKey = Boolean(settings.geminiApiKey && settings.geminiApiKey.trim().length > 5);
 
-  // Modelos REALES extraídos directamente del Google Cloud Console de Tiare (Proyecto: Conpi App)
-  const geminiRealModels = [
+  const geminiCalls = aiMetrics.providerCalls?.['gemini'] || 0;
+  const geminiTokens = aiMetrics.totalTokensUsed || 0;
+
+  // Modelos del Proyecto Administrador de Proyectos (Sin datos inventados cuando la clave está vacía)
+  const geminiModels = [
     {
-      name: 'Gemini 3.5 Flash Lite',
-      category: 'Modelos de texto de salida',
-      currentRPM: '1 / 15',
-      currentTPM: '4 / 250K',
-      currentRPD: '1 / 500',
-      quotaPercent: '0.2%',
-      usedToday: '1 petición',
+      name: 'Gemini 2.5 Flash',
+      category: 'Modelos de texto & multimodal (Producción)',
+      status: hasGeminiKey ? 'Activo' : 'Desconectado',
+      currentRPM: hasGeminiKey ? (geminiCalls > 0 ? '1 / 15' : '0 / 15') : '0 / 15',
+      currentTPM: hasGeminiKey ? `${geminiTokens > 0 ? (geminiTokens > 1000 ? (geminiTokens / 1000).toFixed(1) + 'K' : geminiTokens) : '0'} / 250K` : '0 / 250K',
+      currentRPD: hasGeminiKey ? `${geminiCalls} / 500` : '0 / 500',
+      quotaPercent: hasGeminiKey ? `${((geminiCalls / 500) * 100).toFixed(1)}%` : '0.0%',
+      usedToday: hasGeminiKey ? `${geminiCalls} peticiones` : '0 peticiones (Sin Clave)',
     },
     {
-      name: 'Gemini 3.8 Flash',
-      category: 'Modelos de texto de salida',
-      currentRPM: '1 / 5',
-      currentTPM: '4 / 250K',
-      currentRPD: '2 / 20',
-      quotaPercent: '10.0%',
-      usedToday: '2 peticiones',
-    },
-    {
-      name: 'Antigravity',
-      category: 'Agentes',
-      currentRPM: '0 / 60',
-      currentTPM: '0 / 100K',
-      currentRPD: '0 / 100',
+      name: 'Gemini 2.0 Flash',
+      category: 'Fallback de alta velocidad',
+      status: hasGeminiKey ? 'Disponible' : 'Desconectado',
+      currentRPM: '0 / 15',
+      currentTPM: '0 / 250K',
+      currentRPD: '0 / 500',
       quotaPercent: '0.0%',
-      usedToday: '0 peticiones',
+      usedToday: hasGeminiKey ? '0 peticiones' : '0 peticiones (Sin Clave)',
+    },
+    {
+      name: 'Motor Local Heurístico',
+      category: 'Agente en Navegador (Cero Costo)',
+      status: 'Activo (Local)',
+      currentRPM: 'Ilimitado',
+      currentTPM: 'Ilimitado',
+      currentRPD: 'Ilimitado',
+      quotaPercent: '0.0%',
+      usedToday: 'Modo Offline Seguro',
     },
   ];
 
-  // Proveedores NO configurados
-  const unconfiguredProviders = [
-    { name: 'Groq API', model: 'Llama 3.3 70B' },
-    { name: 'SambaNova', model: 'Llama 3.1 70B' },
-    { name: 'GitHub Models', model: 'Marketplace' },
-    { name: 'OpenRouter', model: 'DeepSeek R1 Free' },
-    { name: 'OpenAI API', model: 'gpt-4o-mini' },
-    { name: 'DeepSeek Direct', model: 'V3 / R1' },
+  // Proveedores de IA con verificación dinámica de clave
+  const aiProviders = [
+    { name: 'Google Gemini', model: 'Gemini 2.5 Flash', hasKey: hasGeminiKey },
+    { name: 'Groq API', model: 'Llama 3.3 70B Free', hasKey: Boolean(settings.groqApiKey && settings.groqApiKey.trim().length > 3) },
+    { name: 'SambaNova', model: 'Llama 3.1 70B', hasKey: Boolean(settings.sambanovaApiKey && settings.sambanovaApiKey.trim().length > 3) },
+    { name: 'GitHub Models', model: 'Personal Token', hasKey: Boolean(settings.githubModelsApiKey && settings.githubModelsApiKey.trim().length > 3) },
+    { name: 'OpenRouter', model: 'DeepSeek R1 Free', hasKey: Boolean(settings.openrouterApiKey && settings.openrouterApiKey.trim().length > 3) },
+    { name: 'OpenAI API', model: 'gpt-4o-mini', hasKey: Boolean(settings.openaiApiKey && settings.openaiApiKey.trim().length > 3) },
+    { name: 'DeepSeek Direct', model: 'V3 / R1', hasKey: Boolean(settings.deepseekApiKey && settings.deepseekApiKey.trim().length > 3) },
   ];
 
   return (
@@ -209,7 +221,7 @@ export const MetricasView: React.FC<MetricasViewProps> = ({ state }) => {
             MÉTRICAS & AGENTE IA
           </h1>
           <p className="text-xs text-slate-400 mt-1 font-mono">
-            Consolidado general de operaciones y estado verificado de cuotas de la API de Google Gemini (Proyecto Conpi App).
+            Consolidado general de operaciones y estado verificado de cuotas de la API de Google Gemini (Proyecto Administrador de Proyectos).
           </p>
         </div>
 
@@ -291,7 +303,7 @@ export const MetricasView: React.FC<MetricasViewProps> = ({ state }) => {
       </div>
 
       {/* ============================================================== */}
-      {/* SECCIÓN OFICIAL DE GOOGLE GEMINI API (PROYECTO CONPI APP) */}
+      {/* SECCIÓN OFICIAL DE GOOGLE GEMINI API (PROYECTO ADMINISTRADOR DE PROYECTOS) */}
       {/* ============================================================== */}
       <div className="bg-[#12151C] border border-[#202634] p-6 rounded-2xl space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#202634] pb-4">
@@ -299,7 +311,7 @@ export const MetricasView: React.FC<MetricasViewProps> = ({ state }) => {
             <div className="flex items-center gap-2.5">
               <Cpu className="w-5 h-5 text-emerald-400" />
               <h2 className="text-base font-bold text-white font-mono">
-                Límites & Cuotas Reales de Google Gemini API (Proyecto Conpi App)
+                Límites & Cuotas Reales de Google Gemini API (Proyecto Administrador de Proyectos)
               </h2>
             </div>
             <p className="text-xs text-slate-400 font-mono mt-1">
@@ -310,16 +322,26 @@ export const MetricasView: React.FC<MetricasViewProps> = ({ state }) => {
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={handleTestGeminiKey}
-              disabled={isTestingGemini || !hasGeminiKey}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/50 rounded-lg text-xs font-mono font-bold text-emerald-300 transition-colors cursor-pointer"
+              disabled={isTestingGemini}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-colors cursor-pointer border ${
+                hasGeminiKey
+                  ? 'bg-emerald-600/20 hover:bg-emerald-600/40 border-emerald-500/50 text-emerald-300'
+                  : 'bg-[#1b202c] hover:bg-[#252c3c] border-slate-700 text-slate-400'
+              }`}
             >
               <Zap className={`w-3.5 h-3.5 ${isTestingGemini ? 'animate-spin' : ''}`} />
               <span>{isTestingGemini ? 'Probando API...' : 'Probar Conexión Gemini API'}</span>
             </button>
 
-            <span className="px-2.5 py-1 rounded-md text-[11px] font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
-              🟢 Nivel Gratuito Activo ($0.00 USD)
-            </span>
+            {hasGeminiKey ? (
+              <span className="px-2.5 py-1 rounded-md text-[11px] font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
+                🟢 Nivel Gratuito Activo ($0.00 USD)
+              </span>
+            ) : (
+              <span className="px-2.5 py-1 rounded-md text-[11px] font-mono font-bold bg-slate-900 text-slate-400 border border-slate-700">
+                ⚪ Sin Clave Configurada
+              </span>
+            )}
           </div>
         </div>
 
@@ -335,9 +357,27 @@ export const MetricasView: React.FC<MetricasViewProps> = ({ state }) => {
           </div>
         )}
 
-        {/* Modelos Activos en el Proyecto de Tiare */}
+        {/* Aviso transparente cuando las claves están vacías en Git / Navegador */}
+        {!hasGeminiKey && (
+          <div className="p-4 bg-amber-950/30 border border-amber-800/40 rounded-xl space-y-2 font-mono text-xs">
+            <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
+              <Key className="w-4 h-4 shrink-0" />
+              <span>Google Gemini API: Sin clave configurada en este entorno</span>
+            </div>
+            <p className="text-slate-300 text-[11px] leading-relaxed">
+              Actualmente los campos de API Keys en <strong>Configuración &gt; Claves de IA</strong> están vacíos. 
+              Por esta razón, el sistema no muestra datos ficticios ni cuotas simuladas ({geminiCalls} peticiones registradas). 
+              Para conectar tu cuota real de Google Cloud / Google AI Studio (Proyecto Administrador de Proyectos), guarda tu clave en Configuración.
+            </p>
+            <div className="flex items-center gap-2 text-[10px] text-amber-300/80 pt-1">
+              <span>● Modo actual: Motor Local Heurístico (Offline) activo en el navegador sin costo de tokens</span>
+            </div>
+          </div>
+        )}
+
+        {/* Modelos en el Proyecto Administrador de Proyectos */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {geminiRealModels.map((m, i) => (
+          {geminiModels.map((m, i) => (
             <div
               key={i}
               className="bg-[#0A0C10] border border-[#1b202c] p-4 rounded-xl space-y-3 font-mono text-xs"
@@ -347,52 +387,76 @@ export const MetricasView: React.FC<MetricasViewProps> = ({ state }) => {
                   <h3 className="text-white font-bold text-sm">{m.name}</h3>
                   <span className="text-[10px] text-slate-500 block">{m.category}</span>
                 </div>
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
-                  Activo
+                <span
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                    m.status === 'Activo'
+                      ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                      : m.status.includes('Local')
+                      ? 'bg-indigo-950 text-indigo-300 border-indigo-800'
+                      : m.status === 'Disponible'
+                      ? 'bg-sky-950 text-sky-300 border-sky-800'
+                      : 'bg-slate-900 text-slate-400 border-slate-700'
+                  }`}
+                >
+                  {m.status}
                 </span>
               </div>
 
               <div className="space-y-1.5 text-[11px]">
                 <div className="flex justify-between text-slate-400">
                   <span>Peticiones por Minuto (RPM):</span>
-                  <span className="text-white font-bold">{m.currentRPM}</span>
+                  <span className={hasGeminiKey || m.status.includes('Local') ? 'text-white font-bold' : 'text-slate-500'}>
+                    {m.currentRPM}
+                  </span>
                 </div>
                 <div className="flex justify-between text-slate-400">
                   <span>Tokens por Minuto (TPM):</span>
-                  <span className="text-white font-bold">{m.currentTPM}</span>
+                  <span className={hasGeminiKey || m.status.includes('Local') ? 'text-white font-bold' : 'text-slate-500'}>
+                    {m.currentTPM}
+                  </span>
                 </div>
                 <div className="flex justify-between text-slate-400">
                   <span>Peticiones por Día (RPD):</span>
-                  <span className="text-emerald-400 font-bold">{m.currentRPD}</span>
+                  <span className={hasGeminiKey ? 'text-emerald-400 font-bold' : m.status.includes('Local') ? 'text-indigo-400 font-bold' : 'text-slate-500'}>
+                    {m.currentRPD}
+                  </span>
                 </div>
 
                 <div className="pt-2 border-t border-[#161a24] flex justify-between text-[10px] text-slate-400">
                   <span>Uso actual del límite:</span>
-                  <span className="text-emerald-400 font-bold">{m.quotaPercent} ({m.usedToday})</span>
+                  <span className={hasGeminiKey ? 'text-emerald-400 font-bold' : 'text-slate-500'}>
+                    {m.quotaPercent} ({m.usedToday})
+                  </span>
                 </div>
               </div>
             </div>
           ))}
         </div>
 
-        {/* Proveedores No Configurados (Sin inventar datos) */}
+        {/* Proveedores con estado verificado dinámicamente */}
         <div className="p-4 bg-[#0A0C10] border border-[#1b202c] rounded-xl space-y-2 font-mono text-xs">
           <span className="text-slate-400 text-[11px] block font-bold">
-            Otros Proveedores de IA en el Sistema (Actualmente Sin Clave Configurada):
+            Estado de Proveedores de IA en el Administrador de Proyectos:
           </span>
           <div className="flex flex-wrap gap-2 pt-1">
-            {unconfiguredProviders.map((p, idx) => (
+            {aiProviders.map((p, idx) => (
               <span
                 key={idx}
-                className="px-2.5 py-1 bg-[#12151C] border border-[#202634] text-slate-500 rounded text-[11px] flex items-center gap-1.5"
+                className={`px-2.5 py-1 rounded text-[11px] flex items-center gap-1.5 border ${
+                  p.hasKey
+                    ? 'bg-emerald-950/60 border-emerald-800 text-emerald-300 font-bold'
+                    : 'bg-[#12151C] border-[#202634] text-slate-500'
+                }`}
               >
-                <span>○ {p.name}</span>
-                <span className="text-slate-600 text-[10px]">({p.model})</span>
+                <span>{p.hasKey ? '🟢' : '○'} {p.name}</span>
+                <span className={p.hasKey ? 'text-emerald-400/80 text-[10px]' : 'text-slate-600 text-[10px]'}>
+                  ({p.hasKey ? 'Conectado' : 'Sin Clave'})
+                </span>
               </span>
             ))}
           </div>
           <p className="text-[10px] text-slate-500 pt-1">
-            Para activar cualquiera de estos proveedores adicionales, ingresa su clave en <strong>Configuración &gt; Claves de IA</strong>. No se registran datos ni cuotas de proveedores inactivos.
+            Para activar o actualizar las credenciales de cualquier proveedor, ingresa tu clave en <strong>Configuración &gt; Claves de IA</strong>. No se generan datos falsos ni consumo ficticio cuando las claves están vacías.
           </p>
         </div>
       </div>

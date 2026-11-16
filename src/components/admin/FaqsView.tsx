@@ -398,7 +398,9 @@ export const FaqsView: React.FC<FaqsViewProps> = ({ state }) => {
             onChange={(e) => setSelectedProvider(e.target.value as any)}
             className="w-full bg-[#0A0C10] border border-[#202634] rounded-lg p-1.5 text-white font-mono text-xs outline-none focus:border-emerald-500 cursor-pointer"
           >
-            <option value="gemini">🌟 Google Gemini (Gemini 2.5 Flash Conectado - Proyecto Conpi App)</option>
+            <option value="gemini">
+              🌟 Google Gemini {state.settings.geminiApiKey ? '(Gemini 2.5 Flash Conectado - Proyecto Administrador de Proyectos)' : '(Sin Clave Configurada)'}
+            </option>
             <option value="auto">⚡ Automático (Gemini 2.5 + Fallback Local)</option>
             <option value="offline">🛡️ Motor Local Heurístico (Cero Tokens / Offline)</option>
             {state.settings.groqApiKey && <option value="groq">⚡ Groq (Llama 3.3 70B Free)</option>}
