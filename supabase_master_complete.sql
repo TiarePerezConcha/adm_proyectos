@@ -1,14 +1,111 @@
 -- ============================================================
--- SCRIPT MAESTRO UNIFICADO & AUTÓNOMO PARA SUPABASE (SQL EDITOR)
+-- SCRIPT MAESTRO DE REPARACIÓN Y MIGRACIÓN TOTAL SUPABASE
 -- Administrador de Proyectos - LSC Operations
--- Orden estricto de dependencias: Llaves Primarias -> Foráneas -> RLS -> Seeds
+-- 100% Blindado contra errores de columnas existentes (ALTER TABLE IF NOT EXISTS)
 -- ============================================================
 
 -- ============================================================
--- FASE 1: CREACIÓN DE TABLAS PADRE (Sin Llaves Foráneas Externas)
+-- PASO 0: REPARAR Y ADAPTAR TABLAS PREEXISTENTES EN SUPABASE
 -- ============================================================
 
--- 1. Perfil de la Consultora
+-- Reparar tabla 'clients'
+CREATE TABLE IF NOT EXISTS clients (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL
+);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS client_type TEXT DEFAULT 'empresa';
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS company TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS rut TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS country TEXT DEFAULT 'Chile';
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'Manual';
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now());
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now());
+
+-- Reparar tabla 'crm_deals'
+CREATE TABLE IF NOT EXISTS crm_deals (
+  id TEXT PRIMARY KEY,
+  client_name TEXT NOT NULL,
+  title TEXT NOT NULL
+);
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS client_id TEXT;
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS project_id TEXT;
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS company TEXT;
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS value_clp BIGINT DEFAULT 850000;
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS stage TEXT DEFAULT 'reunion_agendada';
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS meeting_date TEXT;
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS meet_link TEXT;
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now());
+
+-- Reparar tabla 'quotes'
+CREATE TABLE IF NOT EXISTS quotes (
+  id TEXT PRIMARY KEY,
+  quote_number TEXT NOT NULL,
+  project_title TEXT NOT NULL,
+  total_clp BIGINT NOT NULL
+);
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS client_id TEXT;
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS deal_id TEXT;
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS project_id TEXT;
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS client_name TEXT;
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS client_company TEXT;
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS subtitle TEXT;
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS outcome TEXT;
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS services JSONB;
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS sprints JSONB;
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS payment_condition TEXT DEFAULT '50_50';
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS payment_details TEXT;
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS tax_document TEXT DEFAULT 'factura';
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS delivery_time_days INT DEFAULT 14;
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS validity_days INT DEFAULT 15;
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'borrador';
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now());
+
+-- Reparar tabla 'evaluations'
+CREATE TABLE IF NOT EXISTS evaluations (
+  id TEXT PRIMARY KEY,
+  client_name TEXT NOT NULL
+);
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS client_id TEXT;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS deal_id TEXT;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS project_id TEXT;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS company TEXT;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS business_model TEXT;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS current_platform TEXT;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS estimated_sales_clp BIGINT;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS viability_decision TEXT;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS viability_rationale TEXT;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS score_level TEXT;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS budget_clp BIGINT;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS nic_cost_clp INT DEFAULT 9990;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS hosting_option TEXT;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS database_option TEXT;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS foda JSONB;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS pestel JSONB;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now());
+
+-- Reparar tabla 'telemetry_logs'
+CREATE TABLE IF NOT EXISTS telemetry_logs (
+  id BIGSERIAL PRIMARY KEY,
+  project_id TEXT,
+  event TEXT,
+  url TEXT,
+  message TEXT,
+  timestamp TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+ALTER TABLE telemetry_logs ADD COLUMN IF NOT EXISTS ssl_valid BOOLEAN;
+ALTER TABLE telemetry_logs ADD COLUMN IF NOT EXISTS load_time_ms INT;
+
+-- ============================================================
+-- PASO 1: CREAR TABLAS PADRE FALTANTES
+-- ============================================================
+
+-- 1. Perfil Consultora
 CREATE TABLE IF NOT EXISTS consultant_profile (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -21,23 +118,7 @@ CREATE TABLE IF NOT EXISTS consultant_profile (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 2. Clientes (Empresas y Personas Naturales)
-CREATE TABLE IF NOT EXISTS clients (
-  id TEXT PRIMARY KEY,
-  client_type TEXT DEFAULT 'empresa',
-  name TEXT NOT NULL,
-  company TEXT,
-  rut TEXT,
-  email TEXT,
-  phone TEXT,
-  country TEXT DEFAULT 'Chile',
-  source TEXT DEFAULT 'Manual',
-  notes TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- 3. Representantes Legales (Vinculados a Clientes)
+-- 2. Representantes Legales
 CREATE TABLE IF NOT EXISTS legal_representatives (
   id TEXT PRIMARY KEY,
   client_id TEXT REFERENCES clients(id) ON DELETE CASCADE,
@@ -50,7 +131,7 @@ CREATE TABLE IF NOT EXISTS legal_representatives (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 4. Proyectos Monitoreados (TABLA NÚCLEO)
+-- 3. Proyectos Monitoreados (TABLA NÚCLEO)
 CREATE TABLE IF NOT EXISTS monitored_projects (
   id TEXT PRIMARY KEY,
   client_id TEXT REFERENCES clients(id) ON DELETE SET NULL,
@@ -70,18 +151,17 @@ CREATE TABLE IF NOT EXISTS monitored_projects (
   client_billing JSONB DEFAULT '{}'::jsonb,
   notes JSONB DEFAULT '[]'::jsonb,
   hosting_provider TEXT DEFAULT 'TecnoInver (cPanel / Apache / MySQL)',
-  hosting_plan TEXT DEFAULT 'Cero New ($15,000 Anual)',
+  hosting_plan TEXT DEFAULT 'Cero New ($15,000 Anual / conpis.cl)',
   hosting_renewal_date DATE DEFAULT '2027-06-19',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Si la tabla ya existía de antes, asegurar las nuevas columnas
 ALTER TABLE monitored_projects ADD COLUMN IF NOT EXISTS hosting_provider TEXT DEFAULT 'TecnoInver (cPanel / Apache / MySQL)';
-ALTER TABLE monitored_projects ADD COLUMN IF NOT EXISTS hosting_plan TEXT DEFAULT 'Cero New ($15,000 Anual)';
+ALTER TABLE monitored_projects ADD COLUMN IF NOT EXISTS hosting_plan TEXT DEFAULT 'Cero New ($15,000 Anual / conpis.cl)';
 ALTER TABLE monitored_projects ADD COLUMN IF NOT EXISTS hosting_renewal_date DATE DEFAULT '2027-06-19';
 
--- 5. Dominios Vinculados (Relación 1 a Muchos con monitored_projects)
+-- 4. Dominios Vinculados (Relación 1 a Muchos)
 CREATE TABLE IF NOT EXISTS project_domains (
   id TEXT PRIMARY KEY,
   project_id TEXT REFERENCES monitored_projects(id) ON DELETE CASCADE,
@@ -95,72 +175,7 @@ CREATE TABLE IF NOT EXISTS project_domains (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 6. Pipeline CRM (Deals)
-CREATE TABLE IF NOT EXISTS crm_deals (
-  id TEXT PRIMARY KEY,
-  client_id TEXT REFERENCES clients(id) ON DELETE CASCADE,
-  project_id TEXT REFERENCES monitored_projects(id) ON DELETE SET NULL,
-  client_name TEXT NOT NULL,
-  company TEXT,
-  email TEXT,
-  phone TEXT,
-  title TEXT NOT NULL,
-  value_clp BIGINT DEFAULT 850000,
-  stage TEXT DEFAULT 'reunion_agendada',
-  meeting_date TEXT,
-  meet_link TEXT,
-  notes TEXT,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- 7. Evaluaciones Estratégicas (FODA / PESTEL)
-CREATE TABLE IF NOT EXISTS evaluations (
-  id TEXT PRIMARY KEY,
-  client_id TEXT REFERENCES clients(id) ON DELETE CASCADE,
-  deal_id TEXT REFERENCES crm_deals(id) ON DELETE SET NULL,
-  project_id TEXT REFERENCES monitored_projects(id) ON DELETE SET NULL,
-  client_name TEXT NOT NULL,
-  company TEXT,
-  business_model TEXT,
-  current_platform TEXT,
-  estimated_sales_clp BIGINT,
-  viability_decision TEXT,
-  viability_rationale TEXT,
-  score_level TEXT,
-  budget_clp BIGINT,
-  nic_cost_clp INT DEFAULT 9990,
-  hosting_option TEXT,
-  database_option TEXT,
-  foda JSONB,
-  pestel JSONB,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- 8. Cotizaciones Express
-CREATE TABLE IF NOT EXISTS quotes (
-  id TEXT PRIMARY KEY,
-  quote_number TEXT NOT NULL,
-  client_id TEXT REFERENCES clients(id) ON DELETE CASCADE,
-  deal_id TEXT REFERENCES crm_deals(id) ON DELETE SET NULL,
-  project_id TEXT REFERENCES monitored_projects(id) ON DELETE SET NULL,
-  client_name TEXT NOT NULL,
-  client_company TEXT,
-  project_title TEXT NOT NULL,
-  subtitle TEXT,
-  outcome TEXT,
-  services JSONB,
-  sprints JSONB,
-  total_clp BIGINT NOT NULL,
-  payment_condition TEXT DEFAULT '50_50',
-  payment_details TEXT,
-  tax_document TEXT DEFAULT 'factura',
-  delivery_time_days INT DEFAULT 14,
-  validity_days INT DEFAULT 15,
-  status TEXT DEFAULT 'borrador',
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- 9. Documentación Legal Respaldada (Contratos y Anexos)
+-- 5. Documentación Legal Respaldada
 CREATE TABLE IF NOT EXISTS project_documentation (
   id TEXT PRIMARY KEY,
   project_id TEXT REFERENCES monitored_projects(id) ON DELETE CASCADE,
@@ -184,10 +199,10 @@ CREATE TABLE IF NOT EXISTS project_documentation (
 );
 
 -- ============================================================
--- FASE 2: TABLAS DE OPERACIONES, QA, DEVOPS & BBDD
+-- PASO 2: TABLAS HIJAS (QA, DEVOPS, ARQUITECTURA & CIBERSEGURIDAD)
 -- ============================================================
 
--- 10. Tareas Pendientes & Planificación
+-- Tareas
 CREATE TABLE IF NOT EXISTS project_tasks (
   id TEXT PRIMARY KEY,
   project_id TEXT REFERENCES monitored_projects(id) ON DELETE CASCADE,
@@ -199,7 +214,7 @@ CREATE TABLE IF NOT EXISTS project_tasks (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 11. Checklist QA ("Listo para Producción")
+-- Checklist QA
 CREATE TABLE IF NOT EXISTS project_qa_checklist (
   id TEXT PRIMARY KEY,
   project_id TEXT REFERENCES monitored_projects(id) ON DELETE CASCADE,
@@ -213,7 +228,7 @@ CREATE TABLE IF NOT EXISTS project_qa_checklist (
   last_audit_date TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 12. Copias de Seguridad & Respaldos (Backups)
+-- Respaldos
 CREATE TABLE IF NOT EXISTS project_backups (
   id TEXT PRIMARY KEY,
   project_id TEXT REFERENCES monitored_projects(id) ON DELETE CASCADE,
@@ -226,7 +241,7 @@ CREATE TABLE IF NOT EXISTS project_backups (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 13. Logs de Errores en Producción (Error Tracking)
+-- Error Tracking
 CREATE TABLE IF NOT EXISTS project_error_logs (
   id BIGSERIAL PRIMARY KEY,
   project_id TEXT REFERENCES monitored_projects(id) ON DELETE CASCADE,
@@ -237,7 +252,7 @@ CREATE TABLE IF NOT EXISTS project_error_logs (
   timestamp TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 14. Bitácora Técnica de Arquitectura (ADR)
+-- Bitácora Técnica de Arquitectura (ADR)
 CREATE TABLE IF NOT EXISTS project_architecture_decisions (
   id TEXT PRIMARY KEY,
   project_id TEXT REFERENCES monitored_projects(id) ON DELETE CASCADE,
@@ -250,7 +265,7 @@ CREATE TABLE IF NOT EXISTS project_architecture_decisions (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 15. Stack & Componentes Tecnológicos
+-- Stack Tecnológico
 CREATE TABLE IF NOT EXISTS project_tech_stack (
   id TEXT PRIMARY KEY,
   project_id TEXT REFERENCES monitored_projects(id) ON DELETE CASCADE,
@@ -261,7 +276,7 @@ CREATE TABLE IF NOT EXISTS project_tech_stack (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 16. Despliegues & Git Versioning
+-- Despliegues & Git
 CREATE TABLE IF NOT EXISTS project_deployments (
   id TEXT PRIMARY KEY,
   project_id TEXT REFERENCES monitored_projects(id) ON DELETE CASCADE,
@@ -273,7 +288,7 @@ CREATE TABLE IF NOT EXISTS project_deployments (
   deployed_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 17. Tipo, Estado y Cuota de Almacenamiento de BBDD
+-- Cuota y Almacenamiento de BBDD
 CREATE TABLE IF NOT EXISTS project_database_storage (
   id TEXT PRIMARY KEY,
   project_id TEXT REFERENCES monitored_projects(id) ON DELETE CASCADE,
@@ -287,23 +302,7 @@ CREATE TABLE IF NOT EXISTS project_database_storage (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- ============================================================
--- FASE 3: TABLAS DE CIBERSEGURIDAD, MINI-SOC & TELEMETRÍA
--- ============================================================
-
--- 18. Logs de Telemetría Web en Vivo
-CREATE TABLE IF NOT EXISTS telemetry_logs (
-  id BIGSERIAL PRIMARY KEY,
-  project_id TEXT,
-  event TEXT,
-  url TEXT,
-  message TEXT,
-  ssl_valid BOOLEAN,
-  load_time_ms INT,
-  timestamp TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- 19. Google Search Console Metrics
+-- Search Console
 CREATE TABLE IF NOT EXISTS search_console_metrics (
   id TEXT PRIMARY KEY,
   project_id TEXT REFERENCES monitored_projects(id) ON DELETE CASCADE,
@@ -318,7 +317,7 @@ CREATE TABLE IF NOT EXISTS search_console_metrics (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 20. Google PageSpeed Metrics
+-- PageSpeed Metrics
 CREATE TABLE IF NOT EXISTS pagespeed_metrics (
   id TEXT PRIMARY KEY,
   project_id TEXT REFERENCES monitored_projects(id) ON DELETE CASCADE,
@@ -334,7 +333,7 @@ CREATE TABLE IF NOT EXISTS pagespeed_metrics (
   analyzed_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 21. Monitor de Cuotas de IA ($0 Blindado)
+-- Cuotas de IA ($0 Blindado)
 CREATE TABLE IF NOT EXISTS ai_quota_monitoring (
   id TEXT PRIMARY KEY,
   provider TEXT NOT NULL,
@@ -353,32 +352,7 @@ CREATE TABLE IF NOT EXISTS ai_quota_monitoring (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 22. Google Calendar (Citas Confirmadas)
-CREATE TABLE IF NOT EXISTS calendar_bookings (
-  id BIGSERIAL PRIMARY KEY,
-  client_name TEXT NOT NULL,
-  client_email TEXT,
-  client_phone TEXT,
-  company TEXT,
-  service_interest TEXT,
-  booking_date TEXT NOT NULL,
-  booking_time TEXT NOT NULL,
-  meet_url TEXT,
-  status TEXT DEFAULT 'confirmada',
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- 23. FAQs & Base de Conocimiento
-CREATE TABLE IF NOT EXISTS faqs (
-  id BIGSERIAL PRIMARY KEY,
-  question TEXT NOT NULL,
-  answer TEXT NOT NULL,
-  category TEXT DEFAULT 'General',
-  is_published BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- 24. Diagnóstico Técnico del CISO (SOC con IA)
+-- CISO SOC (IA)
 CREATE TABLE IF NOT EXISTS ciso_diagnostics (
   id TEXT PRIMARY KEY,
   project_id TEXT REFERENCES monitored_projects(id) ON DELETE SET NULL,
@@ -391,7 +365,7 @@ CREATE TABLE IF NOT EXISTS ciso_diagnostics (
   audited_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 25. Centro de Inteligencia de Amenazas & Feed en Vivo (Chile)
+-- Feed de Ciberamenazas Chile
 CREATE TABLE IF NOT EXISTS security_threat_feed (
   id TEXT PRIMARY KEY,
   project_id TEXT REFERENCES monitored_projects(id) ON DELETE SET NULL,
@@ -406,7 +380,7 @@ CREATE TABLE IF NOT EXISTS security_threat_feed (
   detected_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 26. Matriz Cuantitativa ALE (Riesgos Financieros de Ciberseguridad)
+-- Matriz ALE
 CREATE TABLE IF NOT EXISTS security_ale_matrix (
   id TEXT PRIMARY KEY,
   project_id TEXT REFERENCES monitored_projects(id) ON DELETE CASCADE,
@@ -420,7 +394,7 @@ CREATE TABLE IF NOT EXISTS security_ale_matrix (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 27. Defensa Activa (8 Capas del SOC)
+-- 8 Capas del SOC
 CREATE TABLE IF NOT EXISTS defense_in_depth_layers (
   id TEXT PRIMARY KEY,
   project_id TEXT REFERENCES monitored_projects(id) ON DELETE CASCADE,
@@ -433,7 +407,7 @@ CREATE TABLE IF NOT EXISTS defense_in_depth_layers (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 28. Oportunidad de Monetización con Clientes (Anexo a Cotización & Contrato)
+-- Oportunidad de Monetización con Clientes (Anexo a Cotización & Contrato)
 CREATE TABLE IF NOT EXISTS security_commercial_opportunities (
   id TEXT PRIMARY KEY,
   project_id TEXT REFERENCES monitored_projects(id) ON DELETE CASCADE,
@@ -451,7 +425,7 @@ CREATE TABLE IF NOT EXISTS security_commercial_opportunities (
 );
 
 -- ============================================================
--- FASE 4: ROW LEVEL SECURITY (RLS) & POLÍTICAS
+-- PASO 3: POLÍTICAS RLS EN BUCLE SEGURO
 -- ============================================================
 
 DO $$ 
@@ -463,9 +437,9 @@ DECLARE
     'project_tasks', 'project_qa_checklist', 'project_backups', 'project_error_logs', 
     'project_architecture_decisions', 'project_tech_stack', 'project_deployments', 
     'project_database_storage', 'telemetry_logs', 'search_console_metrics', 
-    'pagespeed_metrics', 'ai_quota_monitoring', 'calendar_bookings', 'faqs', 
-    'ciso_diagnostics', 'security_threat_feed', 'security_ale_matrix', 
-    'defense_in_depth_layers', 'security_commercial_opportunities'
+    'pagespeed_metrics', 'ai_quota_monitoring', 'ciso_diagnostics', 
+    'security_threat_feed', 'security_ale_matrix', 'defense_in_depth_layers', 
+    'security_commercial_opportunities'
   ];
 BEGIN
   FOREACH t IN ARRAY tables LOOP
@@ -476,7 +450,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- FASE 5: POBLADO DE DATOS BASE (SEEDING CON DATOS REALES)
+-- PASO 4: INSERCIÓN DE DATOS REALES (SEEDING SEGURO)
 -- ============================================================
 
 -- 1. Consultora
@@ -487,17 +461,22 @@ ON CONFLICT (id) DO UPDATE SET updated_at = now();
 -- 2. Cliente CONPI Chile
 INSERT INTO clients (id, client_type, name, company, rut, email, phone, country, source)
 VALUES ('cli-1794802562643', 'empresa', 'CONPI Chile SpA', 'conpi', '76.543.210-K', 'contacto@conpi.cl', '+56 9 8765 4321', 'Chile', 'Monitoreo & Telemetría')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE 
+SET client_type = EXCLUDED.client_type,
+    company = EXCLUDED.company,
+    rut = EXCLUDED.rut,
+    email = EXCLUDED.email,
+    phone = EXCLUDED.phone;
 
 -- 3. Representante Legal
 INSERT INTO legal_representatives (id, client_id, name, rut, email, phone, position)
 VALUES ('rep-conpi-01', 'cli-1794802562643', 'Representante Legal Autorizado CONPI', '15.678.901-2', 'contacto@conpi.cl', '+56 9 8765 4321', 'Representante Legal Mandante')
 ON CONFLICT (id) DO NOTHING;
 
--- 4. Proyectos Monitoreados (con Hosting TecnoInver "Cero New" Vence: 2027-06-19)
+-- 4. Proyecto CONPI con vencimiento real 19/06/2027 (Plan Cero New)
 INSERT INTO monitored_projects (id, client_id, name, url, project_ownership_type, is_personal_project, client_name, uptime_pct, latency_ms, ssl_status, stack, gsc_property, gsc_connected, hosting_provider, hosting_plan, hosting_renewal_date)
 VALUES
-('conpi-app', 'cli-1794802562643', 'CONPI Chile (conpi.cl)', 'https://conpi.cl', 'cliente', false, 'CONPI Chile SpA', 99.85, 240, 'valido', '["React 18", "Vite", "Tailwind CSS", "REST API / MySQL"]'::jsonb, 'sc-domain:conpi.cl', true, 'TecnoInver (cPanel / Apache / MySQL)', 'Cero New ($15,000 Anual / cPanel IP 45.236.165.193)', '2027-06-19'),
+('conpi-app', 'cli-1794802562643', 'CONPI Chile (conpi.cl)', 'https://conpi.cl', 'cliente', false, 'CONPI Chile SpA', 99.85, 240, 'valido', '["React 18", "Vite", "Tailwind CSS", "REST API / MySQL"]'::jsonb, 'sc-domain:conpi.cl', true, 'TecnoInver (cPanel / Apache / MySQL)', 'Cero New ($15,000 Anual / conpis.cl)', '2027-06-19'),
 ('curriculum-tiare', NULL, 'Currículum Web & Portafolio', 'https://tiareperezconcha.github.io/curriculum/tiare/', 'propio', true, 'Tiare Pérez Concha', 100.00, 115, 'valido', '["HTML5", "CSS3", "JavaScript", "GitHub Pages"]'::jsonb, 'https://tiareperezconcha.github.io/curriculum/tiare/', false, 'GitHub CDN Global', 'GitHub Pages Free', NULL),
 ('lsc-admin-studio', NULL, 'LSC Operations Studio', 'http://localhost:5173', 'propio', true, 'LSC Internal', 100.00, 25, 'valido', '["React 18", "TypeScript", "Tailwind CSS", "Supabase Cloud"]'::jsonb, NULL, false, 'Localhost / Supabase Cloud', 'Dev Server / Free Tier', NULL)
 ON CONFLICT (id) DO UPDATE 
@@ -506,7 +485,7 @@ SET hosting_provider = EXCLUDED.hosting_provider,
     hosting_renewal_date = EXCLUDED.hosting_renewal_date,
     updated_at = now();
 
--- 5. Dominios de CONPI en NIC Chile (.cl)
+-- 5. Dominios NIC Chile
 INSERT INTO project_domains (id, project_id, domain_name, provider, expiration_date, is_primary, ssl_status, redirects_to)
 VALUES
 ('dom-conpi-01', 'conpi-app', 'conpi.cl', 'NIC Chile (.cl)', '2027-06-19', true, 'valido', NULL),
@@ -522,8 +501,7 @@ SET expiration_date = EXCLUDED.expiration_date,
 -- 6. Pipeline CRM
 INSERT INTO crm_deals (id, client_id, project_id, client_name, company, email, phone, title, value_clp, stage, meeting_date, notes)
 VALUES
-('deal-conpi-01', 'cli-1794802562643', 'conpi-app', 'CONPI Chile (conpi.cl)', 'conpi', 'contacto@conpi.cl', '+56 9 8765 4321', 'Implementación Web, Auditoría y Telemetría CONPI', 850000, 'en_monitoreo', '2026-11-20', 'Proyecto en producción con telemetría activa en cPanel.'),
-('deal-propuesta-02', 'cli-1794802562643', 'conpi-app', 'CONPI Chile (conpi.cl)', 'conpi', 'contacto@conpi.cl', '+56 9 8765 4321', 'Optimización SEO y Blindaje de Rendimiento', 450000, 'propuesta_enviada', '2026-11-22', 'Propuesta de sprint de performance y Core Web Vitals.')
+('deal-conpi-01', 'cli-1794802562643', 'conpi-app', 'CONPI Chile (conpi.cl)', 'conpi', 'contacto@conpi.cl', '+56 9 8765 4321', 'Implementación Web, Auditoría y Telemetría CONPI', 850000, 'en_monitoreo', '2026-11-20', 'Proyecto en producción con telemetría activa en cPanel.')
 ON CONFLICT (id) DO NOTHING;
 
 -- 7. Cotizaciones
@@ -654,5 +632,4 @@ VALUES
 ('sec-com-conpi-01', 'conpi-app', 'cli-1794802562643', 'quote-conpi-01', 'deal-conpi-01', 'pro', 185000, 5000000, 1285000, 6.9, 'Anexo 2: Servicio Continuo de Ciberseguridad, SLA 99.9% & Gobernanza SOC 24/7', 'propuesto')
 ON CONFLICT (id) DO UPDATE SET monthly_price_clp = EXCLUDED.monthly_price_clp;
 
--- Retorno de Verificación
 SELECT 'Base de datos de Supabase completamente configurada y poblada con éxito' AS resultado;
