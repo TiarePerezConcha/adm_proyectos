@@ -108,6 +108,8 @@ export function loadAppState(): AppState {
               stack: ['React 18', 'Vite', 'Tailwind CSS', 'REST API / MySQL'],
               gscProperty: 'sc-domain:conpi.cl',
               gscConnected: true,
+              incidentHistory: (p.incidentHistory && p.incidentHistory.length > 0) ? p.incidentHistory : (seedMatch.incidentHistory || []),
+              externalDocs: p.externalDocs || seedMatch.externalDocs || [],
             };
           }
           if (seedMatch) {

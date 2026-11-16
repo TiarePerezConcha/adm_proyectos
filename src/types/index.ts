@@ -1,6 +1,14 @@
 export type Environment = 'admin' | 'studio';
 
-export type AdminTab = 'metricas' | 'seo' | 'calendar' | 'telemetria' | 'soc' | 'faqs' | 'configuracion';
+export type AdminTab =
+  | 'metricas'
+  | 'seo'
+  | 'calendar'
+  | 'telemetria'
+  | 'soc'
+  | 'faqs'
+  | 'documentacion'
+  | 'configuracion';
 
 export type StudioTab =
   | 'evaluacion'
@@ -290,6 +298,28 @@ export interface CalendarBooking {
   rescheduledAt?: string;
 }
 
+export interface IncidentComment {
+  id: string;
+  date: string;
+  author: string;
+  causeType: 'error_humano' | 'ataque_fuerza_bruta' | 'falla_hosting' | 'ssl_dns' | 'mantenimiento';
+  solutionType: 'solucionable_usuario' | 'requiere_soporte_servidor';
+  antecedentText: string;
+  systemVerification?: string;
+  status: 'resuelto' | 'en_investigacion' | 'mitigado';
+}
+
+export interface ProjectExternalDoc {
+  id: string;
+  title: string;
+  category: 'contrato_firmado' | 'cotizacion_pdf' | 'factura' | 'hosting' | 'acta_entrega' | 'otro';
+  fileName: string;
+  fileUrl?: string;
+  date: string;
+  notes?: string;
+  fileSize?: string;
+}
+
 export interface MonitoredProject {
   id: string;
   name: string;
@@ -348,6 +378,9 @@ export interface MonitoredProject {
   };
   notes?: string[];
   isPersonalProject?: boolean;
+  projectOwnershipType?: 'propio' | 'cliente' | 'solidario';
+  externalDocs?: ProjectExternalDoc[];
+  incidentHistory?: IncidentComment[];
   clientBilling?: {
     clientName: string;
     totalQuoteCLP: number;
@@ -355,6 +388,11 @@ export interface MonitoredProject {
     pendingCLP: number;
     taxDocument: 'factura' | 'boleta' | 'exento';
     status: 'al_dia' | 'pago_pendiente' | 'finalizado';
+    clientType?: 'persona_natural' | 'empresa';
+    legalRepresentativeName?: string;
+    legalRepresentativeRUT?: string;
+    clientEmail?: string;
+    clientPhone?: string;
   };
   aiUsage?: {
     provider: string;

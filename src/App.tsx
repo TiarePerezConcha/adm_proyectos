@@ -10,6 +10,7 @@ import { GoogleCalendarView } from './components/admin/GoogleCalendarView';
 import { ProjectMonitorView } from './components/admin/ProjectMonitorView';
 import { MiniSocView } from './components/admin/MiniSocView';
 import { FaqsView } from './components/admin/FaqsView';
+import { DocumentacionView } from './components/admin/DocumentacionView';
 
 // Studio Components
 import { EvaluacionView } from './components/studio/EvaluacionView';
@@ -102,10 +103,17 @@ export function App() {
               <GoogleCalendarView state={state} onUpdateState={setState} />
             )}
             {adminTab === 'telemetria' && (
-              <ProjectMonitorView state={state} onUpdateState={setState} />
+              <ProjectMonitorView
+                state={state}
+                onUpdateState={setState}
+                onNavigateTab={(tab) => setAdminTab(tab)}
+              />
             )}
             {adminTab === 'soc' && <MiniSocView state={state} onUpdateState={setState} />}
             {adminTab === 'faqs' && <FaqsView state={state} />}
+            {adminTab === 'documentacion' && (
+              <DocumentacionView state={state} onUpdateState={setState} />
+            )}
             {adminTab === 'configuracion' && (
               <ConfiguracionView state={state} onUpdateState={setState} />
             )}

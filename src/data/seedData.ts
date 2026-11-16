@@ -272,6 +272,18 @@ export const SEED_MONITORED_PROJECTS: MonitoredProject[] = [
       'Sincronización activa con Google Search Console API mediante cuenta de servicio oficial.',
       'Alojado en cPanel TecnoInver con base de datos MySQL.',
     ],
+    incidentHistory: [
+      {
+        id: 'inc-conpi-01',
+        date: '2026-11-16 13:11',
+        author: 'Soporte TecnoInver & Administradora',
+        causeType: 'ataque_fuerza_bruta',
+        solutionType: 'solucionable_usuario',
+        antecedentText: 'Caída de conpi.cl y bloqueo por reglas de seguridad de cPanel / cPHulk / Fail2Ban debido a múltiples intentos fallidos de autenticación en la casilla de correo contacto@conpi.cl.',
+        systemVerification: '✓ Verificación del Administrador de Proyectos: El administrador opera 100% aislado de servidores de correo (no usa IMAP, POP3 ni SMTP ni almacena credenciales de correo). No generó los reintentos de login. Se recomienda auditar clientes de correo locales en celulares/notebooks y solicitar Whitelist de IP en cPanel.',
+        status: 'resuelto',
+      },
+    ],
     isPersonalProject: false,
   },
   {

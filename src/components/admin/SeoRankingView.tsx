@@ -795,14 +795,9 @@ export default defineConfig({
             ))}
           </select>
 
-          <button
-            onClick={() => setShowAddProjectModal(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#0A0C10] hover:bg-[#1a212e] border border-[#202634] hover:border-emerald-500/50 text-[11px] font-mono text-slate-300 hover:text-white rounded-lg transition-colors cursor-pointer"
-            title="Agregar nuevo proyecto a monitoreo"
-          >
-            <Plus className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Nuevo Proyecto</span>
-          </button>
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#0A0C10] border border-emerald-500/30 text-[11px] font-mono text-emerald-400 rounded-lg" title="Descubrimiento automático desde Studio y Telemetría">
+            <span className="text-[10px] font-semibold">Auto-Sincronizado</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-2.5 text-xs font-mono">

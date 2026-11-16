@@ -17,7 +17,8 @@ import {
   ExternalLink,
   ChevronDown,
   Briefcase,
-  Users
+  Users,
+  BookOpen,
 } from 'lucide-react';
 import { Environment, AdminTab, StudioTab } from '../types';
 
@@ -144,6 +145,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               <HelpCircle className="w-4 h-4" />
               <span>FAQs & Base de Conocimiento</span>
+            </button>
+
+            <button
+              onClick={() => onAdminTabChange('documentacion')}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-xs font-medium transition-all ${
+                adminTab === 'documentacion'
+                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                  : 'hover:bg-[#151922] text-slate-400 hover:text-white'
+              }`}
+            >
+              <BookOpen className="w-4 h-4 text-emerald-400" />
+              <div className="flex items-center justify-between flex-1">
+                <span>Documentación</span>
+                <span className="text-[9px] bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded font-mono">
+                  Legal & QA
+                </span>
+              </div>
             </button>
 
             <button
