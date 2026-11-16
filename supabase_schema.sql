@@ -72,6 +72,26 @@ CREATE TABLE IF NOT EXISTS monitored_projects (
   incident_history JSONB DEFAULT '[]'::jsonb,
   client_billing JSONB DEFAULT '{}'::jsonb,
   notes JSONB DEFAULT '[]'::jsonb,
+  hosting_provider TEXT DEFAULT 'TecnoInver',
+  hosting_plan TEXT DEFAULT 'Hosting Corporativo cPanel',
+  hosting_renewal_date DATE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- ============================================================
+-- 4.1 DOMINIOS VINCULADOS A PROYECTOS (Relación 1 a Muchos)
+-- Permite múltiples dominios por proyecto (ej: conpi.cl y conpis.cl)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS project_domains (
+  id TEXT PRIMARY KEY,
+  project_id TEXT REFERENCES monitored_projects(id) ON DELETE CASCADE,
+  domain_name TEXT NOT NULL,
+  provider TEXT DEFAULT 'NIC Chile (.cl)',
+  expiration_date DATE,
+  is_primary BOOLEAN DEFAULT FALSE,
+  ssl_status TEXT DEFAULT 'valido',
+  redirects_to TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
@@ -324,12 +344,14 @@ ALTER TABLE ai_quota_monitoring ENABLE ROW LEVEL SECURITY;
 ALTER TABLE calendar_bookings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE faqs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE project_documentation ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_domains ENABLE ROW LEVEL SECURITY;
 
 -- Políticas de Acceso para Clave Pública (anon key)
 CREATE POLICY "Permitir anon consultant_profile" ON consultant_profile FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Permitir anon clients" ON clients FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Permitir anon legal_representatives" ON legal_representatives FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Permitir anon monitored_projects" ON monitored_projects FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Permitir anon project_domains" ON project_domains FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Permitir anon crm_deals" ON crm_deals FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Permitir anon evaluations" ON evaluations FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Permitir anon quotes" ON quotes FOR ALL USING (true) WITH CHECK (true);
@@ -363,12 +385,21 @@ VALUES ('rep-conpi-01', 'cli-1794802562643', 'Representante Legal Autorizado CON
 ON CONFLICT (id) DO NOTHING;
 
 -- 17.4 Proyectos Monitoreados
-INSERT INTO monitored_projects (id, client_id, name, url, project_ownership_type, is_personal_project, client_name, uptime_pct, latency_ms, ssl_status, stack, gsc_property, gsc_connected)
+INSERT INTO monitored_projects (id, client_id, name, url, project_ownership_type, is_personal_project, client_name, uptime_pct, latency_ms, ssl_status, stack, gsc_property, gsc_connected, hosting_provider, hosting_plan, hosting_renewal_date)
 VALUES
-('conpi-app', 'cli-1794802562643', 'CONPI Chile (conpi.cl)', 'https://conpi.cl', 'cliente', false, 'CONPI Chile SpA', 99.85, 240, 'valido', '["React 18", "Vite", "Tailwind CSS", "REST API / MySQL"]'::jsonb, 'sc-domain:conpi.cl', true),
-('curriculum-tiare', NULL, 'Currículum Web & Portafolio', 'https://tiareperezconcha.github.io/curriculum/tiare/', 'propio', true, 'Tiare Pérez Concha', 100.00, 115, 'valido', '["HTML5", "CSS3", "JavaScript", "GitHub Pages"]'::jsonb, 'https://tiareperezconcha.github.io/curriculum/tiare/', false),
-('lsc-admin-studio', NULL, 'LSC Operations Studio', 'http://localhost:5173', 'propio', true, 'LSC Internal', 100.00, 25, 'valido', '["React 18", "TypeScript", "Tailwind CSS", "Supabase Cloud"]'::jsonb, NULL, false)
+('conpi-app', 'cli-1794802562643', 'CONPI Chile (conpi.cl)', 'https://conpi.cl', 'cliente', false, 'CONPI Chile SpA', 99.85, 240, 'valido', '["React 18", "Vite", "Tailwind CSS", "REST API / MySQL"]'::jsonb, 'sc-domain:conpi.cl', true, 'TecnoInver (cPanel / Apache / MySQL)', 'Hosting Corporativo cPanel', '2025-10-15'),
+('curriculum-tiare', NULL, 'Currículum Web & Portafolio', 'https://tiareperezconcha.github.io/curriculum/tiare/', 'propio', true, 'Tiare Pérez Concha', 100.00, 115, 'valido', '["HTML5", "CSS3", "JavaScript", "GitHub Pages"]'::jsonb, 'https://tiareperezconcha.github.io/curriculum/tiare/', false, 'GitHub CDN Global', 'GitHub Pages Free', NULL),
+('lsc-admin-studio', NULL, 'LSC Operations Studio', 'http://localhost:5173', 'propio', true, 'LSC Internal', 100.00, 25, 'valido', '["React 18", "TypeScript", "Tailwind CSS", "Supabase Cloud"]'::jsonb, NULL, false, 'Localhost / Supabase Cloud', 'Dev Server / Free Tier', NULL)
 ON CONFLICT (id) DO UPDATE SET updated_at = now();
+
+-- 17.4.1 Dominios Vinculados (Relación 1 a N de Dominios por Proyecto)
+INSERT INTO project_domains (id, project_id, domain_name, provider, expiration_date, is_primary, ssl_status, redirects_to)
+VALUES
+('dom-conpi-01', 'conpi-app', 'conpi.cl', 'NIC Chile (.cl)', '2027-06-19', true, 'valido', NULL),
+('dom-conpi-02', 'conpi-app', 'conpis.cl', 'NIC Chile (.cl)', '2028-06-05', false, 'valido', 'https://conpi.cl'),
+('dom-curriculum-01', 'curriculum-tiare', 'tiareperezconcha.github.io', 'GitHub Pages', '2030-01-01', true, 'valido', NULL),
+('dom-lsc-01', 'lsc-admin-studio', 'localhost:5173', 'Local Dev Server', '2030-01-01', true, 'valido', NULL)
+ON CONFLICT (id) DO UPDATE SET expiration_date = EXCLUDED.expiration_date;
 
 -- 17.5 Pipeline CRM (Deals y Estados)
 INSERT INTO crm_deals (id, client_id, project_id, client_name, company, email, phone, title, value_clp, stage, meeting_date, notes)

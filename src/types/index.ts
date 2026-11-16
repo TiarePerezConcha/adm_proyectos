@@ -320,6 +320,17 @@ export interface ProjectExternalDoc {
   fileSize?: string;
 }
 
+export interface ProjectDomain {
+  id: string;
+  projectId?: string;
+  domain: string;
+  provider: string; // 'NIC Chile (.cl)', 'GitHub Pages', 'Cloudflare', etc.
+  expirationDate: string; // '2027-06-19', '2028-06-05'
+  isPrimary: boolean;
+  sslStatus: 'valido' | 'por_vincular' | 'sin_ssl' | 'expirado';
+  redirectsTo?: string; // ej: 'https://conpi.cl'
+}
+
 export interface MonitoredProject {
   id: string;
   name: string;
@@ -362,12 +373,18 @@ export interface MonitoredProject {
     security: boolean;
     backups: boolean;
   };
+  domains?: ProjectDomain[];
+  hostingRenewalDate?: string;
+  hostingProvider?: string;
+  hostingPlan?: string;
   infraVault?: {
     domainRegistrar?: string;
     hostingProvider?: string;
+    hostingPlan?: string;
     costCategory?: 'gratis_tier' | 'pago_anual' | 'pago_mensual';
     estimatedCostCLP?: number;
     renewalDate?: string;
+    hostingRenewalDate?: string;
   };
   deepLinks?: {
     github?: string;

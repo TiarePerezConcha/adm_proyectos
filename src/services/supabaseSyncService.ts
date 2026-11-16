@@ -23,6 +23,7 @@ export async function fetchInitialDataFromSupabase() {
       gscRes,
       pagespeedRes,
       aiQuotaRes,
+      domainsRes,
     ] = await Promise.allSettled([
       supabase.from('clients').select('*'),
       supabase.from('crm_deals').select('*'),
@@ -34,6 +35,7 @@ export async function fetchInitialDataFromSupabase() {
       supabase.from('search_console_metrics').select('*'),
       supabase.from('pagespeed_metrics').select('*'),
       supabase.from('ai_quota_monitoring').select('*'),
+      supabase.from('project_domains').select('*'),
     ]);
 
     const clients: Client[] =
@@ -127,6 +129,20 @@ export async function fetchInitialDataFromSupabase() {
           }))
         : [];
 
+    const domainsList: any[] =
+      domainsRes.status === 'fulfilled' && domainsRes.value.data
+        ? domainsRes.value.data.map((d: any) => ({
+            id: d.id,
+            projectId: d.project_id,
+            domain: d.domain_name || d.domain,
+            provider: d.provider || 'NIC Chile (.cl)',
+            expirationDate: d.expiration_date,
+            isPrimary: d.is_primary ?? false,
+            sslStatus: d.ssl_status || 'valido',
+            redirectsTo: d.redirects_to,
+          }))
+        : [];
+
     const projects: Partial<MonitoredProject>[] =
       projectsRes.status === 'fulfilled' && projectsRes.value.data
         ? projectsRes.value.data.map((p: any) => ({
@@ -146,6 +162,9 @@ export async function fetchInitialDataFromSupabase() {
             incidentHistory: p.incident_history || [],
             clientBilling: p.client_billing,
             notes: p.notes || [],
+            hostingProvider: p.hosting_provider || 'TecnoInver cPanel',
+            hostingRenewalDate: p.hosting_renewal_date,
+            domains: domainsList.filter((d: any) => d.projectId === p.id),
           }))
         : [];
 
@@ -266,9 +285,28 @@ export async function syncMonitoredProjectToSupabase(project: MonitoredProject) 
       incident_history: project.incidentHistory || [],
       client_billing: project.clientBilling || {},
       notes: project.notes || [],
+      hosting_provider: project.hostingProvider || project.infraVault?.hostingProvider || 'TecnoInver cPanel',
+      hosting_renewal_date: project.hostingRenewalDate || project.infraVault?.hostingRenewalDate || null,
       updated_at: new Date().toISOString(),
     });
     if (error) console.warn('Error en Supabase (monitored_projects):', error.message);
+
+    // Sincronizar dominios vinculados (1 a Muchos)
+    if (project.domains && project.domains.length > 0) {
+      for (const dom of project.domains) {
+        await supabase.from('project_domains').upsert({
+          id: dom.id || `dom-${project.id}-${dom.domain.replace(/[^a-z0-9]/gi, '_')}`,
+          project_id: project.id,
+          domain_name: dom.domain,
+          provider: dom.provider || 'NIC Chile (.cl)',
+          expiration_date: dom.expirationDate,
+          is_primary: dom.isPrimary ?? false,
+          ssl_status: dom.sslStatus || 'valido',
+          redirects_to: dom.redirectsTo || null,
+          created_at: new Date().toISOString(),
+        });
+      }
+    }
   } catch (err) {
     console.warn('Fallo de red Supabase:', err);
   }

@@ -47,6 +47,7 @@ import {
 import { AppState, saveAppState } from '../../utils/storage';
 import { MonitoredProject, IncidentComment } from '../../types';
 import { supabase } from '../../services/supabaseClient';
+import { syncMonitoredProjectToSupabase } from '../../services/supabaseSyncService';
 
 interface ProjectMonitorViewProps {
   state: AppState;
@@ -355,6 +356,12 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
         load_time_ms: 0,
         timestamp: new Date().toISOString(),
       });
+
+      // Sincronizar el historial JSONB directamente en monitored_projects
+      if (targetProj) {
+        const fullUpdatedProj = { ...targetProj, incidentHistory: updatedIncidents };
+        await syncMonitoredProjectToSupabase(fullUpdatedProj);
+      }
     } catch (err) {
       console.warn('No se pudo respaldar comentario en Supabase:', err);
     }
@@ -1706,24 +1713,96 @@ class ConpiUser(HttpUser):
             </div>
 
             <div className="space-y-3 text-[11px]">
-              <div className="flex justify-between items-center p-2.5 bg-[#0A0C10] rounded-lg border border-[#1b202c]">
-                <div>
-                  <span className="text-slate-400 block">Dominio:</span>
-                  <span className="text-white font-semibold">{detailProject.infraVault?.domainRegistrar || 'NIC Chile (.cl)'}</span>
-                </div>
-                {detailProject.infraVault?.renewalDate && (
-                  <span className="px-2 py-0.5 bg-amber-950 text-amber-300 border border-amber-800 rounded text-[10px]">
-                    Renueva: {detailProject.infraVault.renewalDate}
+              {/* Relación 1 a Muchos: Dominios Vinculados */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-slate-400 font-bold block flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Dominios Vinculados ({detailProject.domains && detailProject.domains.length > 0 ? detailProject.domains.length : 1}):</span>
                   </span>
-                )}
+                  <span className="text-[10px] text-slate-500 font-mono">1 a N (NIC Chile / DNS)</span>
+                </div>
+
+                <div className="space-y-1.5">
+                  {detailProject.domains && detailProject.domains.length > 0 ? (
+                    detailProject.domains.map((dom) => (
+                      <div
+                        key={dom.id || dom.domain}
+                        className="p-2.5 bg-[#0A0C10] rounded-lg border border-[#1b202c] hover:border-[#2a3447] transition-colors space-y-1"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-white font-bold text-xs">{dom.domain}</span>
+                            {dom.isPrimary ? (
+                              <span className="px-1.5 py-0.2 bg-emerald-950 text-emerald-300 border border-emerald-700 rounded text-[9px] font-bold">
+                                PRINCIPAL
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.2 bg-sky-950 text-sky-300 border border-sky-800 rounded text-[9px] font-bold">
+                                REDIRECCIÓN / PROTECCIÓN
+                              </span>
+                            )}
+                          </div>
+                          <span className="px-2 py-0.5 bg-amber-950 text-amber-300 border border-amber-800 rounded text-[10px] font-mono">
+                            Expira: {dom.expirationDate}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5 border-t border-[#161a24]">
+                          <span className="flex items-center gap-1">
+                            <span>Registrador:</span>
+                            <span className="text-slate-200 font-medium">{dom.provider}</span>
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                            <span className="text-emerald-400 font-medium">SSL / TLS Activo</span>
+                            {dom.redirectsTo && (
+                              <span className="text-slate-500 font-mono">→ {dom.redirectsTo}</span>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="flex justify-between items-center p-2.5 bg-[#0A0C10] rounded-lg border border-[#1b202c]">
+                      <div>
+                        <span className="text-slate-400 block">Dominio Principal:</span>
+                        <span className="text-white font-semibold">{detailProject.infraVault?.domainRegistrar || 'NIC Chile (.cl)'}</span>
+                      </div>
+                      {detailProject.infraVault?.renewalDate && (
+                        <span className="px-2 py-0.5 bg-amber-950 text-amber-300 border border-amber-800 rounded text-[10px]">
+                          Renueva: {detailProject.infraVault.renewalDate}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="flex justify-between items-center p-2.5 bg-[#0A0C10] rounded-lg border border-[#1b202c]">
-                <div>
-                  <span className="text-slate-400 block">Alojamiento Web / Hosting:</span>
-                  <span className="text-white font-semibold">{detailProject.infraVault?.hostingProvider || 'GitHub CDN'}</span>
+              {/* Alojamiento Web & Hosting cPanel */}
+              <div className="p-2.5 bg-[#0A0C10] rounded-lg border border-[#1b202c] space-y-1">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">Alojamiento Web / Hosting:</span>
+                    <span className="text-white font-semibold">
+                      {detailProject.hostingProvider || detailProject.infraVault?.hostingProvider || 'TecnoInver cPanel'}
+                    </span>
+                  </div>
+                  <span className="px-2 py-0.5 bg-emerald-950 text-emerald-300 border border-emerald-800 rounded text-[10px] font-bold">
+                    Cloud Activo
+                  </span>
                 </div>
-                <span className="text-emerald-400 text-[10px]">Cloud Activo</span>
+
+                <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-[#161a24]">
+                  <span>
+                    Plan: <strong className="text-slate-300">{detailProject.hostingPlan || detailProject.infraVault?.hostingPlan || 'Hosting Corporativo cPanel'}</strong>
+                  </span>
+                  {(detailProject.hostingRenewalDate || detailProject.infraVault?.hostingRenewalDate) && (
+                    <span className="text-amber-400 font-mono">
+                      Renovación: <strong>{detailProject.hostingRenewalDate || detailProject.infraVault?.hostingRenewalDate}</strong>
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Accesos Rápidos Deep Links */}
