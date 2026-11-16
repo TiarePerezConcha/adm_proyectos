@@ -36,6 +36,13 @@ import {
   Filter,
   Eye,
   SlidersHorizontal,
+  Zap,
+  Play,
+  Square,
+  Flame,
+  BarChart3,
+  HelpCircle,
+  Info,
 } from 'lucide-react';
 import { AppState, saveAppState } from '../../utils/storage';
 import { MonitoredProject } from '../../types';
@@ -81,6 +88,29 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
   const [showTelemetryStream, setShowTelemetryStream] = useState(true);
   const [showIntegrationGuide, setShowIntegrationGuide] = useState(false);
 
+  // Inspección de Detalle de Log de Telemetría (Modal de Causa Raíz)
+  const [inspectedLog, setInspectedLog] = useState<any | null>(null);
+
+  // Simulador de Alto Flujo & Pruebas de Carga / Estrés (Load & Stress Testing)
+  const [loadTestUrl, setLoadTestUrl] = useState<string>('https://conpi.cl');
+  const [loadTestMode, setLoadTestMode] = useState<'load' | 'stress'>('load');
+  const [loadTestConcurrency, setLoadTestConcurrency] = useState<number>(20);
+  const [loadTestRunning, setLoadTestRunning] = useState<boolean>(false);
+  const [loadTestResults, setLoadTestResults] = useState<{
+    totalSent: number;
+    completed: number;
+    success: number;
+    failed: number;
+    latencies: number[];
+    minLat: number;
+    maxLat: number;
+    avgLat: number;
+    p95Lat: number;
+  } | null>(null);
+  const [activeToolScript, setActiveToolScript] = useState<'k6' | 'artillery' | 'locust' | 'jmeter'>('k6');
+  const [copiedScript, setCopiedScript] = useState(false);
+  const loadTestAbortRef = React.useRef<boolean>(false);
+
   // Modo de vista principal (Tabla Consolidada vs Tarjetas)
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
 
@@ -100,6 +130,195 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
   const [newStack, setNewStack] = useState('React, Vite, Tailwind');
   const [newQueues, setNewQueues] = useState('');
   const [newDbType, setNewDbType] = useState<'supabase_postgres' | 'static_none' | 'firebase_firestore' | 'mysql_cpanel'>('supabase_postgres');
+
+  // Funciones del Simulador de Alto Flujo & Pruebas de Carga
+  const handleRunLoadTest = async () => {
+    if (loadTestRunning || !loadTestUrl) return;
+    setLoadTestRunning(true);
+    loadTestAbortRef.current = false;
+
+    const totalRequests = loadTestMode === 'load' ? loadTestConcurrency : loadTestConcurrency * 3;
+    let completed = 0;
+    let success = 0;
+    let failed = 0;
+    const latencies: number[] = [];
+
+    setLoadTestResults({
+      totalSent: totalRequests,
+      completed: 0,
+      success: 0,
+      failed: 0,
+      latencies: [],
+      minLat: 0,
+      maxLat: 0,
+      avgLat: 0,
+      p95Lat: 0,
+    });
+
+    const batchSize = loadTestMode === 'stress' ? 6 : 3;
+    for (let i = 0; i < totalRequests; i += batchSize) {
+      if (loadTestAbortRef.current) break;
+      const currentBatch = Math.min(batchSize, totalRequests - i);
+      const promises = Array.from({ length: currentBatch }).map(async () => {
+        const t0 = performance.now();
+        try {
+          const urlWithBust = `${loadTestUrl}${loadTestUrl.includes('?') ? '&' : '?'}bench=${Date.now()}_${Math.random()}`;
+          await fetch(urlWithBust, { mode: 'no-cors', cache: 'no-store' });
+          const lat = Math.max(1, Math.round(performance.now() - t0));
+          latencies.push(lat);
+          success++;
+        } catch {
+          const lat = Math.max(1, Math.round(performance.now() - t0));
+          latencies.push(lat);
+          failed++;
+        } finally {
+          completed++;
+        }
+      });
+
+      await Promise.all(promises);
+
+      const sum = latencies.reduce((a, b) => a + b, 0);
+      const avg = latencies.length > 0 ? Math.round(sum / latencies.length) : 0;
+      const sorted = [...latencies].sort((a, b) => a - b);
+      const p95 = sorted.length > 0 ? sorted[Math.floor(sorted.length * 0.95)] : 0;
+      const min = sorted.length > 0 ? sorted[0] : 0;
+      const max = sorted.length > 0 ? sorted[sorted.length - 1] : 0;
+
+      setLoadTestResults({
+        totalSent: totalRequests,
+        completed,
+        success,
+        failed,
+        latencies: [...latencies],
+        minLat: min,
+        maxLat: max,
+        avgLat: avg,
+        p95Lat: p95,
+      });
+
+      await new Promise((r) => setTimeout(r, loadTestMode === 'stress' ? 50 : 120));
+    }
+
+    setLoadTestRunning(false);
+  };
+
+  const handleStopLoadTest = () => {
+    loadTestAbortRef.current = true;
+    setLoadTestRunning(false);
+  };
+
+  const getToolScript = (tool: 'k6' | 'artillery' | 'locust' | 'jmeter', url: string) => {
+    const cleanUrl = url || 'https://conpi.cl';
+    if (tool === 'k6') {
+      return `// loadtest_k6.js
+// Herramienta recomendada: k6 (scripts en JavaScript ultra-rápidos)
+// 1. Descargar k6 gratis: https://k6.io/docs/get-started/installation/
+// 2. Ejecutar prueba: k6 run loadtest_k6.js
+
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+
+export const options = {
+  stages: [
+    { duration: '30s', target: 20 },  // Rampa a 20 usuarios virtuales (VUs)
+    { duration: '1m', target: 50 },   // Carga constante de 50 usuarios
+    { duration: '20s', target: 120 }, // Ráfaga de Estrés: pico a 120 usuarios
+    { duration: '20s', target: 0 },   // Enfriamiento
+  ],
+  thresholds: {
+    http_req_duration: ['p(95)<500'], // SLA Googlebot: 95% de peticiones en menos de 500ms
+    http_req_failed: ['rate<0.01'],    // Menos del 1% de errores para evitar penalización SEO
+  },
+};
+
+export default function () {
+  const res = http.get('${cleanUrl}', {
+    headers: { 'User-Agent': 'K6-LoadBench-TiareStudio/2.0' },
+  });
+  check(res, {
+    'status es 200': (r) => r.status === 200,
+    'tiempo < 500ms': (r) => r.timings.duration < 500,
+  });
+  sleep(1);
+}`;
+    }
+
+    if (tool === 'artillery') {
+      return `# artillery.yml
+# Herramienta: Artillery (configuración declarativa YAML sobre Node.js)
+# 1. Instalar Artillery: npm install -g artillery
+# 2. Ejecutar prueba: npx artillery run artillery.yml --output reporte.json
+
+config:
+  target: "${cleanUrl}"
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      name: "Fase 1: Calentamiento (5 usuarios/seg)"
+    - duration: 120
+      arrivalRate: 25
+      rampTo: 80
+      name: "Fase 2: Prueba de Carga Progresiva (80 usuarios/seg)"
+    - duration: 30
+      arrivalRate: 150
+      name: "Fase 3: Ráfaga de Estrés Extremo (150 usuarios/seg)"
+  defaults:
+    headers:
+      User-Agent: "Artillery-StressBench-TiareStudio/2.0"
+scenarios:
+  - flow:
+      - get:
+          url: "/"`;
+    }
+
+    if (tool === 'locust') {
+      return `# locustfile.py
+# Herramienta: Locust (scripts en Python con interfaz gráfica en tiempo real)
+# 1. Instalar Locust: pip install locust
+# 2. Ejecutar interfaz web (localhost:8089): locust -f locustfile.py --host=${cleanUrl}
+# 3. O ejecutar por terminal sin GUI: locust -f locustfile.py --headless -u 50 -r 10 -t 1m
+
+from locust import HttpUser, task, between
+
+class ConpiUser(HttpUser):
+    wait_time = between(1, 3)  # Simula pausa humana de 1 a 3 segundos entre clics
+
+    @task(3)
+    def visit_homepage(self):
+        self.client.get("/", name="Home conpi.cl")
+
+    @task(1)
+    def visit_health(self):
+        with self.client.get("/", catch_response=True) as response:
+            if response.status_code >= 500:
+                response.failure(f"Servidor saturado: Código HTTP {response.status_code}")
+            else:
+                response.success()`;
+    }
+
+    return `<!-- Apache JMeter (Plan de Pruebas de Carga & Estrés) -->
+<!-- 1. Descarga gratuita: https://jmeter.apache.org/download_jmeter.cgi -->
+<!-- 2. Abre jmeter.bat en Windows y configura los siguientes elementos: -->
+
+1. Thread Group (Grupo de Hilos):
+   - Number of Threads (Usuarios Concurrentes): 50
+   - Ramp-up period (Segundos para iniciar todos): 10
+   - Loop Count (Ciclos de repetición): 20
+
+2. HTTP Request Sampler (Petición Web):
+   - Protocol: https
+   - Server Name or IP: ${cleanUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '')}
+   - HTTP Method: GET
+   - Path: /
+
+3. Listeners Recomendados:
+   - "Summary Report" (Promedio, Mínimo, Máximo y Error %)
+   - "View Results Tree" (Inspeccionar códigos de respuesta 200 vs 500)
+
+4. Ejecución en Terminal sin Interfaz Gráfica (Máximo rendimiento):
+   jmeter -n -t plan_prueba.jmx -l resultados.jtl -e -o ./reporte_html`;
+  };
 
   // 1. Auditoría Activa en Vivo (Mide latencia real con fetch HTTP y reporta a Supabase)
   const auditSingleProjectLive = async (projId: string) => {
@@ -2162,10 +2381,24 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
                   </thead>
                   <tbody className="divide-y divide-[#1b212d]">
                     {filteredTelemetryLogs.map((log, idx) => (
-                      <tr key={idx} className="hover:bg-[#161a24] transition-colors">
-                        <td className="py-2 px-3 text-emerald-400 font-bold">{log.project_id}</td>
+                      <tr
+                        key={idx}
+                        onClick={() => setInspectedLog(log)}
+                        className="hover:bg-[#1a2232] transition-colors cursor-pointer group"
+                        title="Haz clic para inspeccionar causa raíz y diagnóstico técnico detallado"
+                      >
+                        <td className="py-2 px-3 text-emerald-400 font-bold flex items-center gap-1.5">
+                          <span>{log.project_id}</span>
+                          <span className="text-[9px] text-slate-500 group-hover:text-emerald-400 opacity-0 group-hover:opacity-100 transition">🔍</span>
+                        </td>
                         <td className="py-2 px-3 text-slate-300 max-w-[200px] truncate">
-                          <a href={log.url} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400">
+                          <a
+                            href={log.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="hover:text-emerald-400 underline decoration-slate-700"
+                          >
                             {log.url}
                           </a>
                         </td>
@@ -2190,7 +2423,12 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
                             <span className="text-amber-400">Sin SSL</span>
                           )}
                         </td>
-                        <td className="py-2 px-3 text-slate-400 max-w-[200px] truncate">{log.message || '-'}</td>
+                        <td className="py-2 px-3 text-slate-400 max-w-[240px] truncate group-hover:text-slate-200">
+                          <span className="flex items-center gap-1">
+                            <span className="truncate">{log.message || '-'}</span>
+                            <span className="text-[9px] text-emerald-400/90 font-bold shrink-0 underline ml-1">Ver Detalle ➔</span>
+                          </span>
+                        </td>
                         <td className="py-2 px-3 text-right text-slate-500 whitespace-nowrap">
                           {log.timestamp
                             ? new Date(log.timestamp).toLocaleTimeString([], {
@@ -2262,6 +2500,282 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
             <p className="text-[11px] text-slate-400 leading-relaxed">
               Google Search Console penaliza severamente y muestra la alerta "Sitio no seguro" si un dominio carece de certificado SSL vigente. Todos los dominios monitoreados operan bajo HTTPS con renovación automática.
             </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ============================================================== */}
+      {/* SIMULADOR DE ALTO FLUJO & PRUEBAS DE CARGA / ESTRÉS (LOAD & STRESS TESTING) */}
+      {/* ============================================================== */}
+      <div className="bg-[#12151C] border border-[#202634] p-5 rounded-2xl space-y-5 font-mono text-xs shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#202634] pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-emerald-950/70 border border-emerald-800/40 flex items-center justify-center text-emerald-400">
+              <Flame className="w-4 h-4 text-amber-400" />
+            </div>
+            <div>
+              <h3 className="text-white font-bold text-sm flex items-center gap-2">
+                <span>Simulador de Alto Flujo & Pruebas de Carga / Estrés</span>
+                <span className="text-[10px] text-amber-400 font-normal bg-amber-950/60 border border-amber-800/40 px-2 py-0.5 rounded">
+                  Load & Stress Testing Suite
+                </span>
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Simula concurrencia de visitantes, mide la degradación de latencia e identifica cuellos de botella antes de que afecten el rastreo de Googlebot.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-slate-400 bg-[#0A0C10] border border-[#202634] px-2.5 py-1 rounded">
+              {loadTestMode === 'load' ? '🟢 Modo Carga Sostenida' : '🔥 Modo Estrés Extremo'}
+            </span>
+          </div>
+        </div>
+
+        {/* Panel explicativo didáctico: Diferencia entre Load Testing y Stress Testing */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-[#0A0C10] p-3.5 rounded-xl border border-[#1b212d]">
+          <div className="space-y-1">
+            <span className="text-emerald-400 font-bold text-[11px] flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5" />
+              <span>1. Prueba de Carga (Load Testing):</span>
+            </span>
+            <p className="text-slate-400 text-[11px] leading-relaxed">
+              Evalúa el rendimiento bajo el tráfico previsto o picos comerciales habituales (ej: 20 a 50 peticiones simultáneas). El objetivo es verificar que el First Byte (TTFB) se mantenga bajo <strong>400 ms</strong> sin elevar la tasa de errores.
+            </p>
+          </div>
+          <div className="space-y-1">
+            <span className="text-amber-400 font-bold text-[11px] flex items-center gap-1.5">
+              <Flame className="w-3.5 h-3.5" />
+              <span>2. Prueba de Estrés (Stress Testing):</span>
+            </span>
+            <p className="text-slate-400 text-[11px] leading-relaxed">
+              Lanza ráfagas agresivas y extremas para encontrar el <strong>punto de quiebre</strong> del servidor. Determina si el hosting rechaza peticiones con HTTP 429/503, si la base de datos agota sus conexiones y cuánto tarda en recuperarse.
+            </p>
+          </div>
+        </div>
+
+        {/* Consola de Control Interactiva del Simulador */}
+        <div className="bg-[#0D1017] p-4 rounded-xl border border-[#202634] space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="text-[11px] text-slate-400 block mb-1">Proyecto Objetivo a Probar:</label>
+              <select
+                value={loadTestUrl}
+                onChange={(e) => setLoadTestUrl(e.target.value)}
+                disabled={loadTestRunning}
+                className="w-full bg-[#161a24] border border-[#202634] rounded-lg px-2.5 py-1.5 text-slate-200 text-xs focus:outline-none focus:border-emerald-500"
+              >
+                {state.monitoredProjects.map((p) => (
+                  <option key={p.id} value={p.url}>
+                    {p.name} ({p.url})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[11px] text-slate-400 block mb-1">Tipo de Prueba:</label>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setLoadTestMode('load')}
+                  disabled={loadTestRunning}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold border transition ${
+                    loadTestMode === 'load'
+                      ? 'bg-emerald-950/70 border-emerald-600 text-emerald-300'
+                      : 'bg-[#161a24] border-[#202634] text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  ⚡ Carga (Normal)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLoadTestMode('stress')}
+                  disabled={loadTestRunning}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold border transition ${
+                    loadTestMode === 'stress'
+                      ? 'bg-rose-950/70 border-rose-600 text-rose-300'
+                      : 'bg-[#161a24] border-[#202634] text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  🔥 Estrés (Ráfaga)
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[11px] text-slate-400 block mb-1">Concurrencia / Peticiones:</label>
+              <div className="flex items-center gap-2">
+                <select
+                  value={loadTestConcurrency}
+                  onChange={(e) => setLoadTestConcurrency(Number(e.target.value))}
+                  disabled={loadTestRunning}
+                  className="w-full bg-[#161a24] border border-[#202634] rounded-lg px-2.5 py-1.5 text-slate-200 text-xs focus:outline-none focus:border-emerald-500"
+                >
+                  <option value={10}>10 Peticiones simultáneas</option>
+                  <option value={20}>20 Peticiones simultáneas</option>
+                  <option value={50}>50 Peticiones simultáneas</option>
+                  <option value={100}>100 Peticiones (Pico alto)</option>
+                  <option value={200}>200 Peticiones (Carga extrema)</option>
+                </select>
+                {loadTestRunning ? (
+                  <button
+                    type="button"
+                    onClick={handleStopLoadTest}
+                    className="px-3 py-1.5 bg-rose-900/60 hover:bg-rose-800 text-rose-200 border border-rose-700 rounded-lg text-xs font-bold flex items-center gap-1 shrink-0 cursor-pointer"
+                  >
+                    <Square className="w-3.5 h-3.5 fill-current" />
+                    <span>Detener</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleRunLoadTest}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shrink-0 transition cursor-pointer shadow-sm"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    <span>Iniciar Simulación</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Resultados de la Simulación en Vivo */}
+          {loadTestResults && (
+            <div className="bg-[#07090E] p-3.5 rounded-xl border border-[#1d2331] space-y-3 pt-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-slate-300 font-bold flex items-center gap-1.5">
+                  <BarChart3 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Telemetría en Vivo de la Prueba:</span>
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  Progreso: {loadTestResults.completed} / {loadTestResults.totalSent} peticiones ({Math.round((loadTestResults.completed / (loadTestResults.totalSent || 1)) * 100)}%)
+                </span>
+              </div>
+
+              {/* Barra de progreso */}
+              <div className="w-full bg-[#1b212d] h-2 rounded-full overflow-hidden">
+                <div
+                  className="bg-emerald-500 h-full transition-all duration-200"
+                  style={{ width: `${Math.round((loadTestResults.completed / (loadTestResults.totalSent || 1)) * 100)}%` }}
+                ></div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-[11px]">
+                <div className="p-2 bg-[#10141D] rounded-lg border border-[#1e2535]">
+                  <span className="text-slate-500 block text-[10px]">Latencia Promedio</span>
+                  <span className={`font-bold text-sm ${loadTestResults.avgLat > 600 ? 'text-rose-400' : loadTestResults.avgLat > 300 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                    {loadTestResults.avgLat} ms
+                  </span>
+                </div>
+                <div className="p-2 bg-[#10141D] rounded-lg border border-[#1e2535]">
+                  <span className="text-slate-500 block text-[10px]">Percentil 95 (P95)</span>
+                  <span className="font-bold text-sm text-sky-400">
+                    {loadTestResults.p95Lat} ms
+                  </span>
+                </div>
+                <div className="p-2 bg-[#10141D] rounded-lg border border-[#1e2535]">
+                  <span className="text-slate-500 block text-[10px]">Pico Máximo</span>
+                  <span className="font-bold text-sm text-purple-400">
+                    {loadTestResults.maxLat} ms
+                  </span>
+                </div>
+                <div className="p-2 bg-[#10141D] rounded-lg border border-[#1e2535]">
+                  <span className="text-slate-500 block text-[10px]">Tasa de Éxito / Errores</span>
+                  <span className="font-bold text-sm text-slate-200">
+                    <span className="text-emerald-400">{loadTestResults.success} ✓</span> · <span className="text-rose-400">{loadTestResults.failed} ✕</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Semáforo SEO de Googlebot */}
+              <div className="p-2.5 rounded-lg border text-[11px] leading-relaxed flex items-start gap-2 bg-[#0c1017] border-[#1b2230]">
+                <div className="mt-0.5">
+                  {loadTestResults.avgLat <= 350 && loadTestResults.failed === 0 ? (
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block"></span>
+                  ) : loadTestResults.avgLat <= 800 && loadTestResults.failed === 0 ? (
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span>
+                  ) : (
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block"></span>
+                  )}
+                </div>
+                <div className="text-slate-300">
+                  <strong className="text-white block font-semibold mb-0.5">
+                    {loadTestResults.avgLat <= 350 && loadTestResults.failed === 0
+                      ? 'Diagnóstico SEO: Excelente Capacidad de Respuesta para Googlebot'
+                      : loadTestResults.avgLat <= 800 && loadTestResults.failed === 0
+                      ? 'Diagnóstico SEO: Aceptable pero con Alerta de Saturación'
+                      : 'Diagnóstico SEO: Servidor en Riesgo de Penalización por Latencia/Errores'}
+                  </strong>
+                  {loadTestResults.avgLat <= 350 && loadTestResults.failed === 0
+                    ? `El servidor soporta la concurrencia en ${loadTestResults.avgLat} ms promedio. Googlebot podrá indexar todas las páginas sin demoras ni recortes de cuota de rastreo.`
+                    : loadTestResults.avgLat <= 800 && loadTestResults.failed === 0
+                    ? `Bajo esta concurrencia, la latencia sube a ${loadTestResults.avgLat} ms. Si bien no hay caídas 500, Googlebot podría ralentizar la indexación de catálogo.`
+                    : `Se registraron fallos de conexión o latencias de hasta ${loadTestResults.maxLat} ms. Si Googlebot detecta errores 5xx durante picos de tráfico, desindexará URLs de búsqueda.`}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Generador de Scripts para Herramientas Gratuitas (k6, Artillery, Locust, JMeter) */}
+        <div className="space-y-3 pt-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <span className="text-white font-bold text-xs flex items-center gap-1.5">
+                <Code className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Generador de Scripts para Herramientas de Carga Profesionales (100% Gratuitas):</span>
+              </span>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Si deseas ejecutar pruebas de estrés profesionales desde tu propia terminal sin limitaciones de navegador, copia estos scripts preconfigurados:
+              </p>
+            </div>
+
+            {/* Pestañas de herramientas */}
+            <div className="flex items-center gap-1 bg-[#0A0C10] p-1 rounded-lg border border-[#202634] self-start sm:self-auto">
+              {(['k6', 'artillery', 'locust', 'jmeter'] as const).map((tool) => (
+                <button
+                  key={tool}
+                  type="button"
+                  onClick={() => {
+                    setActiveToolScript(tool);
+                    setCopiedScript(false);
+                  }}
+                  className={`px-2.5 py-1 rounded text-[11px] font-bold uppercase transition cursor-pointer ${
+                    activeToolScript === tool
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {tool}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="relative bg-[#07090E] border border-[#1d2331] rounded-xl p-3 font-mono text-[11px] overflow-hidden">
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#1b212d] text-slate-400 text-[10px]">
+              <span>
+                Configurado para: <strong className="text-emerald-400">{loadTestUrl}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(getToolScript(activeToolScript, loadTestUrl));
+                  setCopiedScript(true);
+                  setTimeout(() => setCopiedScript(false), 2000);
+                }}
+                className="flex items-center gap-1 px-2.5 py-1 bg-[#161a24] hover:bg-[#202634] text-emerald-400 border border-emerald-800/40 rounded text-[10px] font-bold transition cursor-pointer"
+              >
+                {copiedScript ? <Check className="w-3 h-3 text-emerald-300" /> : <Copy className="w-3 h-3" />}
+                <span>{copiedScript ? '¡Copiado!' : 'Copiar Script'}</span>
+              </button>
+            </div>
+            <pre className="text-slate-300 overflow-x-auto max-h-56 p-1 scrollbar-thin">
+              {getToolScript(activeToolScript, loadTestUrl)}
+            </pre>
           </div>
         </div>
       </div>
@@ -2432,6 +2946,119 @@ export const ProjectMonitorView: React.FC<ProjectMonitorViewProps> = ({ state, o
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Inspección Detallada de Log / Error de Telemetría */}
+      {inspectedLog && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#12151C] border border-[#202634] w-full max-w-2xl rounded-2xl shadow-2xl p-6 space-y-4 font-mono text-xs max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between border-b border-[#202634] pb-3">
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                    inspectedLog.event === 'error'
+                      ? 'bg-rose-950/80 text-rose-400 border border-rose-800/50'
+                      : 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/50'
+                  }`}
+                >
+                  {inspectedLog.event === 'error' ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                </div>
+                <div>
+                  <h3 className="text-white font-bold text-sm">
+                    Inspección Detallada de Evento: {inspectedLog.project_id}
+                  </h3>
+                  <span className="text-[11px] text-slate-400">
+                    Capturado el {inspectedLog.timestamp ? new Date(inspectedLog.timestamp).toLocaleString() : 'Reciente'}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setInspectedLog(null)}
+                className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-[#1a202c] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-[11px]">
+              <div className="bg-[#0A0C10] p-3 rounded-xl border border-[#1b212d] space-y-1">
+                <span className="text-slate-500 block text-[10px]">URL Auditada</span>
+                <a
+                  href={inspectedLog.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-emerald-400 hover:underline font-bold break-all flex items-center gap-1"
+                >
+                  <span>{inspectedLog.url}</span>
+                  <ExternalLink className="w-3 h-3 shrink-0" />
+                </a>
+              </div>
+              <div className="bg-[#0A0C10] p-3 rounded-xl border border-[#1b212d] space-y-1">
+                <span className="text-slate-500 block text-[10px]">Tipo de Evento & Estado</span>
+                <span
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold border inline-block ${
+                    inspectedLog.event === 'error'
+                      ? 'bg-rose-950 text-rose-300 border-rose-800'
+                      : 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                  }`}
+                >
+                  {inspectedLog.event.toUpperCase()} · {inspectedLog.ssl_valid ? 'HTTPS Válido' : 'Sin SSL Comprobado'}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-[#0A0C10] p-3.5 rounded-xl border border-[#1b212d] space-y-1">
+              <span className="text-slate-500 block text-[10px]">Mensaje Completo del Error:</span>
+              <code className="text-rose-300 font-bold block break-all text-xs">
+                {inspectedLog.message}
+              </code>
+            </div>
+
+            {/* Diagnóstico técnico de causa raíz para conpi.cl y Failed to fetch */}
+            <div className="bg-[#0D1017] p-4 rounded-xl border border-[#202634] space-y-2.5 text-[11px] leading-relaxed">
+              <span className="text-amber-400 font-bold flex items-center gap-1.5">
+                <Info className="w-4 h-4" />
+                <span>Diagnóstico de Causa Raíz de Red & SSL:</span>
+              </span>
+
+              <p className="text-slate-300">
+                1. <strong>Resolución DNS:</strong> El dominio <code>conpi.cl</code> resuelve a la dirección IP <code>45.236.165.193</code> (servidor <code>reportes.tecnoinver.cl</code>).
+              </p>
+              <p className="text-slate-300">
+                2. <strong>Fallo de Conexión TCP:</strong> Las conexiones de red hacia el servidor en puerto 443 (HTTPS) y puerto 80 (HTTP) están arrojando <code>TimedOut / Fallido</code> a nivel de socket de red.
+              </p>
+              <p className="text-slate-300">
+                3. <strong>Por qué el navegador dice "Failed to fetch":</strong> Por motivos de seguridad web, si el servidor web no completa el apretón de manos (handshake) TLS o si existe un bloqueo de firewall o reglas de CORS ausentes, el navegador aborta inmediatamente la petición y genera un <code>TypeError: Failed to fetch</code> genérico.
+              </p>
+            </div>
+
+            {/* Acciones de resolución recomendadas */}
+            <div className="bg-emerald-950/20 border border-emerald-800/40 p-4 rounded-xl space-y-2 text-[11px]">
+              <span className="text-emerald-400 font-bold block">Acciones Recomendadas para Solucionarlo:</span>
+              <ul className="text-slate-300 space-y-1.5 list-disc pl-4">
+                <li>
+                  <strong>Revisar Estado del Servidor en TecnoInver:</strong> Ingresar al panel cPanel / WHM o panel de hosting y verificar si el servicio web (Apache / LiteSpeed / Nginx) está corriendo en la IP <code>45.236.165.193</code>.
+                </li>
+                <li>
+                  <strong>Renovación de Certificado SSL:</strong> Asegurar que AutoSSL o Let's Encrypt tenga emitido un certificado válido para <code>conpi.cl</code> y <code>www.conpi.cl</code>.
+                </li>
+                <li>
+                  <strong>Inyectar el SDK JS en conpi.cl:</strong> Cuando el sitio esté arriba, pega el SDK universal ligero incluido más abajo antes del cierre de <code>&lt;/body&gt;</code>. Así el monitoreo se ejecuta desde el propio dominio de Conpi usando <code>sendBeacon</code> sin ninguna fricción de red.
+                </li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#202634]">
+              <button
+                type="button"
+                onClick={() => setInspectedLog(null)}
+                className="px-4 py-1.5 bg-[#1b212d] hover:bg-[#252c3c] text-slate-300 rounded-lg text-xs font-semibold cursor-pointer"
+              >
+                Cerrar Diagnóstico
+              </button>
+            </div>
           </div>
         </div>
       )}

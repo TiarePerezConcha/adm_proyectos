@@ -18,6 +18,7 @@ import {
 
 import {
   INITIAL_SETTINGS,
+  DEFAULT_INFRASTRUCTURE_RATES,
   SEED_CLIENTS,
   SEED_DEALS,
   SEED_EVALUATIONS,
@@ -152,8 +153,17 @@ export function loadAppState(): AppState {
       const otherProjects = cleanProjects.filter((p: any) => p.id !== 'conpi-app' && !(p.url && p.url.includes('conpi.cl')));
       const finalOrderedProjects = [conpiItem, ...otherProjects];
 
+      const resolvedSettings: AppSettings = {
+        ...INITIAL_SETTINGS,
+        ...(parsed.settings || {}),
+        infrastructureRates:
+          parsed.settings?.infrastructureRates && parsed.settings.infrastructureRates.length > 0
+            ? parsed.settings.infrastructureRates
+            : DEFAULT_INFRASTRUCTURE_RATES,
+      };
+
       return {
-        settings: { ...INITIAL_SETTINGS, ...(parsed.settings || {}) },
+        settings: resolvedSettings,
         clients: parsed.clients || SEED_CLIENTS,
         deals: cleanDeals,
         evaluations: parsed.evaluations || SEED_EVALUATIONS,
@@ -212,7 +222,14 @@ export function exportAppStateToJSON(state: AppState): void {
 export function importAppStateFromJSON(jsonString: string): AppState {
   const parsed = JSON.parse(jsonString);
   const validatedState: AppState = {
-    settings: { ...INITIAL_SETTINGS, ...(parsed.settings || {}) },
+    settings: {
+      ...INITIAL_SETTINGS,
+      ...(parsed.settings || {}),
+      infrastructureRates:
+        parsed.settings?.infrastructureRates && parsed.settings.infrastructureRates.length > 0
+          ? parsed.settings.infrastructureRates
+          : DEFAULT_INFRASTRUCTURE_RATES,
+    },
     clients: parsed.clients || SEED_CLIENTS,
     deals: parsed.deals || SEED_DEALS,
     evaluations: parsed.evaluations || SEED_EVALUATIONS,

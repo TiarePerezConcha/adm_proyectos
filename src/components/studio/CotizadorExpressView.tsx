@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { FileSpreadsheet, Plus, Sparkles, Printer, Mail, CheckCircle2, Trash2, Edit3, Eye, ArrowLeft, Layers, Calendar, DollarSign } from 'lucide-react';
 import { AppState, syncDealStage, saveAppState } from '../../utils/storage';
-import { Quote, Client, QuoteService, QuoteSprint } from '../../types';
+import { Quote, Client, QuoteService, QuoteSprint, InfrastructureRate } from '../../types';
+import { DEFAULT_INFRASTRUCTURE_RATES } from '../../data/seedData';
 import { generateWithAI } from '../../services/aiService';
 import { syncQuoteToSupabase, syncDealToSupabase } from '../../services/supabaseSyncService';
 
@@ -135,6 +136,18 @@ export const CotizadorExpressView: React.FC<CotizadorExpressViewProps> = ({
         title: 'Nuevo Servicio o Entregable',
         description: 'Descripción detallada de lo que incluye...',
         priceCLP: 150000,
+      },
+    ]);
+  };
+
+  const handleAddInfrastructureRate = (rate: InfrastructureRate) => {
+    setServices([
+      ...services,
+      {
+        id: `infra-${Date.now()}`,
+        title: `${rate.name} (${rate.provider})`,
+        description: rate.notes || `Servicio de ${rate.category} facturado de forma ${rate.billingPeriod}.`,
+        priceCLP: rate.costCLP,
       },
     ]);
   };
@@ -626,18 +639,44 @@ export const CotizadorExpressView: React.FC<CotizadorExpressViewProps> = ({
 
             {/* Servicios Incluidos */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <label className="block font-bold text-slate-900 uppercase tracking-wider text-xs">
                   Servicios Incluidos ({services.length})
                 </label>
-                <button
-                  type="button"
-                  onClick={handleAddService}
-                  className="text-xs font-semibold text-slate-800 hover:text-black flex items-center gap-1"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>+ Añadir servicio</span>
-                </button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <select
+                    onChange={(e) => {
+                      const selectedId = e.target.value;
+                      if (!selectedId) return;
+                      const rates = state.settings?.infrastructureRates || DEFAULT_INFRASTRUCTURE_RATES;
+                      const found = rates.find((r) => r.id === selectedId);
+                      if (found) {
+                        handleAddInfrastructureRate(found);
+                      }
+                      e.target.value = '';
+                    }}
+                    defaultValue=""
+                    className="text-[11px] font-mono bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-slate-700 outline-none focus:border-slate-900 cursor-pointer shadow-sm"
+                  >
+                    <option value="" disabled>+ Cargar Hosting/Infraestructura...</option>
+                    {(state.settings?.infrastructureRates || DEFAULT_INFRASTRUCTURE_RATES)
+                      .filter((r) => r.isSyncedToQuotes ?? true)
+                      .map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name} - ${r.costCLP.toLocaleString('es-CL')} CLP ({r.billingPeriod})
+                        </option>
+                      ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={handleAddService}
+                    className="text-xs font-semibold text-slate-800 hover:text-black flex items-center gap-1 bg-white border border-slate-200 hover:border-slate-400 rounded-lg px-2.5 py-1 shadow-sm transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Servicio manual</span>
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-3">

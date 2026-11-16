@@ -19,6 +19,32 @@ export const DLP_SAFETY_SHIELD_BYTES = Math.floor(DLP_FREE_TIER_BYTE_LIMIT * 0.8
 export const TRANSLATION_FREE_TIER_CHAR_LIMIT = 500000;
 export const TRANSLATION_SAFETY_SHIELD_CHARS = 400000;
 
+export function syncProviderStatusToStorage(
+  provider: string,
+  status: 'active' | 'no_credits' | 'error',
+  message: string
+): void {
+  try {
+    const raw = localStorage.getItem('lsc_admin_studio_v3_live');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.settings) {
+        parsed.settings.providerStatus = {
+          ...(parsed.settings.providerStatus || {}),
+          [provider]: {
+            status,
+            message,
+            checkedAt: new Date().toISOString(),
+          },
+        };
+        localStorage.setItem('lsc_admin_studio_v3_live', JSON.stringify(parsed));
+      }
+    }
+  } catch (e) {
+    console.warn('Error sincronizando estado de proveedor:', e);
+  }
+}
+
 export function getAIUsageMetrics(): AIUsageMetrics {
   try {
     const raw = localStorage.getItem(AI_METRICS_KEY);
@@ -196,39 +222,52 @@ export async function generateWithAI(
     }
   }
 
-  // 2. Groq (Llama 3.3 70B / Llama 3.1 8B) - Ultra-rápido, tier gratuito
+  // 2. Groq (Llama 3.1 8B / Llama 3.1 70B) - Ultra-rápido, tier gratuito
   if (
     settings.groqApiKey &&
     (activeModel === 'groq' || activeModel === 'auto')
   ) {
     try {
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${settings.groqApiKey.trim()}`,
-        },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          messages: [
-            {
-              role: 'system',
-              content: `Eres el motor experto de IA de Tiare Pérez Concha para diseño web, ecommerce, ciberseguridad y estudio técnico en Chile. Contexto: ${context}`,
-            },
-            { role: 'user', content: prompt },
-          ],
-          temperature: 0.7,
-        }),
-      });
+      const groqCandidates = [
+        'llama-3.1-8b-instant',
+        'llama-3.1-70b-versatile',
+        'llama-3.3-70b-versatile',
+        'llama3-70b-8192',
+      ];
 
-      if (response.ok) {
-        const data = await response.json();
-        const text = data?.choices?.[0]?.message?.content;
-        if (text) {
-          const promptT = data.usage?.prompt_tokens || Math.ceil(prompt.length / 4);
-          const compT = data.usage?.completion_tokens || Math.ceil(text.length / 4);
-          recordAIUsage('Groq (Llama 3.3 70B)', promptT, compT);
-          return text.trim();
+      for (const groqModel of groqCandidates) {
+        try {
+          const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${settings.groqApiKey.trim()}`,
+            },
+            body: JSON.stringify({
+              model: groqModel,
+              messages: [
+                {
+                  role: 'system',
+                  content: `Eres el motor experto de IA de Tiare Pérez Concha para diseño web, ecommerce, ciberseguridad y estudio técnico en Chile. Contexto: ${context}`,
+                },
+                { role: 'user', content: prompt },
+              ],
+              temperature: 0.7,
+            }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            const text = data?.choices?.[0]?.message?.content;
+            if (text) {
+              const promptT = data.usage?.prompt_tokens || Math.ceil(prompt.length / 4);
+              const compT = data.usage?.completion_tokens || Math.ceil(text.length / 4);
+              recordAIUsage(`Groq (${groqModel})`, promptT, compT);
+              return text.trim();
+            }
+          }
+        } catch {
+          // Intentar siguiente modelo candidato
         }
       }
     } catch (err) {
@@ -384,8 +423,17 @@ export async function generateWithAI(
           const promptT = data.usage?.prompt_tokens || Math.ceil(prompt.length / 4);
           const compT = data.usage?.completion_tokens || Math.ceil(text.length / 4);
           recordAIUsage('OpenAI (gpt-4o-mini)', promptT, compT);
+          syncProviderStatusToStorage('openai', 'active', 'gpt-4o-mini');
           return text.trim();
         }
+      } else {
+        const errJson = await response.json().catch(() => ({}));
+        const errMsg = errJson?.error?.message || `HTTP ${response.status}`;
+        const isNoCredits =
+          errMsg.toLowerCase().includes('credit') ||
+          errMsg.toLowerCase().includes('quota') ||
+          errMsg.toLowerCase().includes('balance');
+        syncProviderStatusToStorage('openai', isNoCredits ? 'no_credits' : 'error', errMsg);
       }
     } catch (err) {
       console.warn('Fallo llamada OpenAI...', err);
@@ -424,8 +472,17 @@ export async function generateWithAI(
           const promptT = data.usage?.prompt_tokens || Math.ceil(prompt.length / 4);
           const compT = data.usage?.completion_tokens || Math.ceil(text.length / 4);
           recordAIUsage('DeepSeek (deepseek-chat)', promptT, compT);
+          syncProviderStatusToStorage('deepseek', 'active', 'deepseek-chat');
           return text.trim();
         }
+      } else {
+        const errJson = await response.json().catch(() => ({}));
+        const errMsg = errJson?.error?.message || `HTTP ${response.status}`;
+        const isNoCredits =
+          errMsg.toLowerCase().includes('credit') ||
+          errMsg.toLowerCase().includes('quota') ||
+          errMsg.toLowerCase().includes('balance');
+        syncProviderStatusToStorage('deepseek', isNoCredits ? 'no_credits' : 'error', errMsg);
       }
     } catch (err) {
       console.warn('Fallo llamada DeepSeek...', err);

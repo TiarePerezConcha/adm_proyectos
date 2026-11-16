@@ -422,6 +422,17 @@ export interface AIUsageMetrics {
   lastUsedTimestamp?: string;
 }
 
+export interface InfrastructureRate {
+  id: string;
+  name: string;
+  category: 'dominio' | 'hosting' | 'vps' | 'saas' | 'otro';
+  billingPeriod: 'anual' | 'mensual';
+  costCLP: number;
+  provider: string;
+  notes?: string;
+  isSyncedToQuotes?: boolean;
+}
+
 export interface AppSettings {
   deepseekApiKey: string;
   geminiApiKey: string;
@@ -448,7 +459,13 @@ export interface AppSettings {
   supabaseKeepAliveIntervalDays: number;
   nicChileCostCLP: number;
   tecnoInverCostCLP: number;
+  infrastructureRates?: InfrastructureRate[];
   telemetryEndpoint: string;
   userSecurity?: UserProfileSecurity;
+  providerStatus?: Record<string, {
+    status: 'active' | 'no_credits' | 'error' | 'untested';
+    message?: string;
+    checkedAt?: string;
+  }>;
 }
 

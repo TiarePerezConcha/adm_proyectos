@@ -13,7 +13,71 @@ import {
   SecurityRisk,
   SecurityPlaybook,
   AppSettings,
+  InfrastructureRate,
 } from '../types';
+
+export const DEFAULT_INFRASTRUCTURE_RATES: InfrastructureRate[] = [
+  {
+    id: 'infra-nic-cl',
+    name: 'Dominio Nacional (.cl)',
+    category: 'dominio',
+    billingPeriod: 'anual',
+    costCLP: 10950,
+    provider: 'NIC Chile',
+    notes: 'Tarifa oficial anual con IVA para dominios territoriales .cl',
+    isSyncedToQuotes: true,
+  },
+  {
+    id: 'infra-tecnoinver-shared',
+    name: 'Hosting Compartido TecnoInver',
+    category: 'hosting',
+    billingPeriod: 'anual',
+    costCLP: 30000,
+    provider: 'TecnoInver',
+    notes: 'Plan cPanel nacional estándar para pymes y páginas web informativas',
+    isSyncedToQuotes: true,
+  },
+  {
+    id: 'infra-wordpress-hosting',
+    name: 'Hosting Especializado WordPress / WooCommerce',
+    category: 'hosting',
+    billingPeriod: 'anual',
+    costCLP: 45000,
+    provider: 'Hostinger / TecnoInver Pro',
+    notes: 'Optimizado para WordPress con caché LiteSpeed, PHP 8.3 y SSL',
+    isSyncedToQuotes: true,
+  },
+  {
+    id: 'infra-vps-cloud',
+    name: 'VPS Cloud Básico (1 vCPU, 2GB RAM)',
+    category: 'vps',
+    billingPeriod: 'mensual',
+    costCLP: 8500,
+    provider: 'DigitalOcean / Linode',
+    notes: 'Para aplicaciones Node.js, Python FastAPI o bases de datos dedicadas',
+    isSyncedToQuotes: false,
+  },
+  {
+    id: 'infra-supabase-pro',
+    name: 'Supabase Cloud Pro (Base de Datos)',
+    category: 'saas',
+    billingPeriod: 'mensual',
+    costCLP: 24000,
+    provider: 'Supabase Inc.',
+    notes: 'Sin pausas automáticas de 7 días, 8GB BD PostgreSQL y backups diarios',
+    isSyncedToQuotes: false,
+  },
+  {
+    id: 'infra-ssl-letsencrypt',
+    name: 'Certificado SSL Automático (Wildcard)',
+    category: 'saas',
+    billingPeriod: 'anual',
+    costCLP: 0,
+    provider: 'Cloudflare / Let\'s Encrypt',
+    notes: 'Cifrado HTTPS obligatorio gratuito con renovación automática',
+    isSyncedToQuotes: true,
+  },
+];
 
 export const INITIAL_SETTINGS: AppSettings = {
   deepseekApiKey: '',
@@ -25,8 +89,9 @@ export const INITIAL_SETTINGS: AppSettings = {
   supabaseUrl: 'https://cvfybrtblxzpawnxqsnd.supabase.co',
   supabaseAnonKey: 'sb_publishable_FaHiwWE7FIHP5-Xr7F6UQg_bJYFphXb',
   supabaseKeepAliveIntervalDays: 3,
-  nicChileCostCLP: 9990,
+  nicChileCostCLP: 10950,
   tecnoInverCostCLP: 30000,
+  infrastructureRates: DEFAULT_INFRASTRUCTURE_RATES,
   telemetryEndpoint: 'https://cvfybrtblxzpawnxqsnd.supabase.co/rest/v1/telemetry_logs',
 };
 

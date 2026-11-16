@@ -23,8 +23,11 @@ dist-ssr
 *.sln
 *.sw?
 
-# Secrets
+# Secrets & Backups
 client_secret*.json
 conpi-app*.json
 *serviceaccount*.json
 *.env*
+*.rar
+*.zip
+administrador de proyectos/
