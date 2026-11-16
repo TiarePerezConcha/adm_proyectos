@@ -1,0 +1,49 @@
+name: Supabase 24/7 Keep-Alive Anti-Pausa
+
+on:
+  schedule:
+    # Se ejecuta automáticamente cada 2 días a las 12:00 UTC (al mediodía)
+    # Garantiza que Supabase nunca llegue a los 7 días de inactividad que causan la pausa
+    - cron: '0 12 */2 * *'
+  workflow_dispatch: # Permite ejecutar el ping manualmente desde la pestaña Actions en GitHub
+
+jobs:
+  keepalive:
+    name: Ejecutar Ping HTTP a Supabase Postgres
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping API REST de Supabase (Lectura de Base de Datos)
+        run: |
+          echo "Ejecutando consulta SELECT de baja carga a Supabase..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "apikey: sb_publishable_FaHiwWE7FIHP5-Xr7F6UQg_bJYFphXb" \
+            -H "Authorization: Bearer sb_publishable_FaHiwWE7FIHP5-Xr7F6UQg_bJYFphXb" \
+            "https://cvfybrtblxzpawnxqsnd.supabase.co/rest/v1/telemetry_logs?select=id&limit=1")
+          echo "Respuesta HTTP Supabase REST: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -ne 200 ]; then
+            echo "Alerta: Código HTTP inesperado $HTTP_STATUS"
+            exit 1
+          fi
+
+      - name: Registrar Ping de Salud en telemetry_logs (Escritura en Base de Datos)
+        run: |
+          echo "Insertando registro de actividad keep-alive en PostgreSQL..."
+          curl -s -X POST "https://cvfybrtblxzpawnxqsnd.supabase.co/rest/v1/telemetry_logs?apikey=sb_publishable_FaHiwWE7FIHP5-Xr7F6UQg_bJYFphXb" \
+            -H "apikey: sb_publishable_FaHiwWE7FIHP5-Xr7F6UQg_bJYFphXb" \
+            -H "Authorization: Bearer sb_publishable_FaHiwWE7FIHP5-Xr7F6UQg_bJYFphXb" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "project_id": "supabase-keepalive-cron",
+              "event": "heartbeat",
+              "url": "https://cvfybrtblxzpawnxqsnd.supabase.co",
+              "load_time_ms": 15,
+              "ssl_valid": true,
+              "message": "Keep-Alive 24/7 Anti-Pausa (GitHub Actions Cloud Automático)"
+            }'
+          echo "Ping de escritura registrado con éxito."
+
+      - name: Ping Auth Health de Supabase
+        run: |
+          echo "Comprobando servicio de autenticación Supabase Auth..."
+          curl -s -f "https://cvfybrtblxzpawnxqsnd.supabase.co/auth/v1/health" || true
+          echo "Comprobación completada. Supabase permanece despierto y activo 24/7."

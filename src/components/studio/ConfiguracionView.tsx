@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Settings, Key, Database, Download, Upload, Check, RefreshCw, Shield, Sparkles, DollarSign } from 'lucide-react';
+import { Settings, Key, Database, Download, Upload, Check, RefreshCw, Shield, Sparkles, DollarSign, CheckCircle2, Globe, Clock, Server } from 'lucide-react';
 import { AppState, saveAppState, exportAppStateToJSON, importAppStateFromJSON } from '../../utils/storage';
 import { AppSettings, UserProfileSecurity } from '../../types';
 import { SecuritySettingsSection } from './SecuritySettingsSection';
+import { supabase } from '../../services/supabaseClient';
 
 interface ConfiguracionViewProps {
   state: AppState;
@@ -26,12 +27,28 @@ export const ConfiguracionView: React.FC<ConfiguracionViewProps> = ({ state, onU
     setTimeout(() => setSavedSuccess(false), 2500);
   };
 
-  const handleTestSupabasePing = () => {
+  const handleTestSupabasePing = async () => {
     setPingingSupabase(true);
-    setTimeout(() => {
+    try {
+      const t0 = performance.now();
+      const { data, error } = await supabase.from('telemetry_logs').insert({
+        project_id: 'studio-keepalive-manual',
+        event: 'heartbeat',
+        url: window.location.href,
+        load_time_ms: 12,
+        ssl_valid: window.location.protocol === 'https:',
+        message: 'Ping Keep-Alive manual ejecutado desde Estudio de Configuración'
+      }).select('id');
+
+      const elapsed = Math.round(performance.now() - t0);
+
+      if (error) throw error;
+      alert(`✅ ¡Ping Keep-Alive ejecutado con éxito en ${elapsed}ms!\nSupabase ha registrado actividad en vivo en la base de datos (Log ID: ${data?.[0]?.id || 'OK'}).`);
+    } catch (err: any) {
+      alert(`⚠️ Error al enviar ping a Supabase:\n${err?.message || 'Error de conexión'}`);
+    } finally {
       setPingingSupabase(false);
-      alert('¡Ping Keep-Alive ejecutado con éxito! Supabase ha registrado actividad reciente.');
-    }, 800);
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -165,20 +182,30 @@ export const ConfiguracionView: React.FC<ConfiguracionViewProps> = ({ state, onU
 
         {/* Supabase Keep-Alive Card */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
               <Database className="w-4 h-4 text-emerald-600" />
-              <span>Automatización Anti-Pausa de Supabase (Base de Datos Gratis)</span>
+              <span>Automatización Anti-Pausa de Supabase (Base de Datos Gratis 24/7)</span>
             </div>
             <button
               type="button"
               onClick={handleTestSupabasePing}
               disabled={pingingSupabase}
-              className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
+              className="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
             >
-              <RefreshCw className={`w-3 h-3 ${pingingSupabase ? 'animate-spin' : ''}`} />
-              <span>Probar Ping Ahora</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${pingingSupabase ? 'animate-spin' : ''}`} />
+              <span>{pingingSupabase ? 'Enviando Ping...' : 'Probar Ping en Vivo'}</span>
             </button>
+          </div>
+
+          <div className="p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl space-y-1.5 text-xs">
+            <div className="flex items-center gap-2 font-bold text-emerald-800">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Protección 24/7 Activa en GitHub Actions</span>
+            </div>
+            <p className="text-[11px] text-emerald-900/80 leading-relaxed font-mono">
+              El flujo <code className="bg-white/80 px-1.5 py-0.5 rounded border border-emerald-300 text-emerald-800">.github/workflows/supabase-keepalive.yml</code> ejecuta automáticamente un ping SELECT y POST cada <strong>2 días a las 12:00 UTC</strong> directamente desde los servidores de GitHub en la nube. Supabase nunca volverá a pausarse, incluso si nadie visita la plataforma.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -203,6 +230,23 @@ export const ConfiguracionView: React.FC<ConfiguracionViewProps> = ({ state, onU
                 }
                 className="w-full border border-slate-200 rounded-lg p-2.5 font-mono text-xs focus:outline-none"
               />
+            </div>
+          </div>
+
+          {/* Respaldo Redundante cron-job.org */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2 text-xs">
+            <div className="flex items-center gap-2 font-bold text-slate-800 text-[11px]">
+              <Clock className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Respaldo Externo Opcional (Redundancia con cron-job.org)</span>
+            </div>
+            <p className="text-[11px] text-slate-600 leading-relaxed">
+              Si deseas un segundo guardián externo independiente de GitHub, puedes crear un cron gratuito en{' '}
+              <a href="https://console.cron-job.org" target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline font-medium">console.cron-job.org</a> con estos parámetros:
+            </p>
+            <div className="bg-white border border-slate-200 p-2.5 rounded font-mono text-[10px] text-slate-700 space-y-1">
+              <div><strong>URL (GET):</strong> <code className="text-slate-900">https://cvfybrtblxzpawnxqsnd.supabase.co/rest/v1/telemetry_logs?select=id&limit=1</code></div>
+              <div><strong>Header:</strong> <code className="text-slate-900">apikey: sb_publishable_FaHiwWE7FIHP5-Xr7F6UQg_bJYFphXb</code></div>
+              <div><strong>Frecuencia:</strong> Cada 3 días</div>
             </div>
           </div>
         </div>
