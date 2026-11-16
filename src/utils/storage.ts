@@ -58,17 +58,9 @@ export function loadAppState(): AppState {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      const activeBookings = parsed.calendarBookings || SEED_CALENDAR;
-      const cleanDeals = (parsed.deals || SEED_DEALS).filter((d: any) => {
-        if (d.stage === 'reunion_agendada') {
-          return activeBookings.some(
-            (b: any) =>
-              b.clientName.toLowerCase() === (d.clientName || '').toLowerCase() ||
-              b.clientEmail.toLowerCase() === (d.email || '').toLowerCase()
-          );
-        }
-        return true;
-      });
+      const activeBookings = (parsed.calendarBookings && parsed.calendarBookings.length > 0) ? parsed.calendarBookings : SEED_CALENDAR;
+      const rawDeals = (parsed.deals && parsed.deals.length > 0) ? parsed.deals : SEED_DEALS;
+      const cleanDeals = rawDeals;
 
       // Limpiar y unificar proyectos monitoreados (filtrar pruebas y asegurar enriquecimiento)
       const rawProjects = parsed.monitoredProjects && parsed.monitoredProjects.length > 0 
@@ -166,15 +158,15 @@ export function loadAppState(): AppState {
 
       return {
         settings: resolvedSettings,
-        clients: parsed.clients || SEED_CLIENTS,
+        clients: (parsed.clients && parsed.clients.length > 0) ? parsed.clients : SEED_CLIENTS,
         deals: cleanDeals,
-        evaluations: parsed.evaluations || SEED_EVALUATIONS,
-        quotes: parsed.quotes || SEED_QUOTES,
-        brandingProjects: parsed.brandingProjects || [SEED_BRANDING],
-        briefs: parsed.briefs || [SEED_BRIEF],
-        designSystems: parsed.designSystems || [SEED_DESIGN_SYSTEM],
+        evaluations: (parsed.evaluations && parsed.evaluations.length > 0) ? parsed.evaluations : SEED_EVALUATIONS,
+        quotes: (parsed.quotes && parsed.quotes.length > 0) ? parsed.quotes : SEED_QUOTES,
+        brandingProjects: (parsed.brandingProjects && parsed.brandingProjects.length > 0) ? parsed.brandingProjects : [SEED_BRANDING],
+        briefs: (parsed.briefs && parsed.briefs.length > 0) ? parsed.briefs : [SEED_BRIEF],
+        designSystems: (parsed.designSystems && parsed.designSystems.length > 0) ? parsed.designSystems : [SEED_DESIGN_SYSTEM],
         seoKeywords: parsed.seoKeywords && parsed.seoKeywords.length > 0 ? parsed.seoKeywords : SEED_SEO_KEYWORDS,
-        calendarBookings: parsed.calendarBookings || SEED_CALENDAR,
+        calendarBookings: activeBookings,
         monitoredProjects: finalOrderedProjects,
         securityAssets: parsed.securityAssets || SEED_SECURITY_ASSETS,
         securityRisks: parsed.securityRisks || SEED_SECURITY_RISKS,

@@ -95,17 +95,131 @@ export const INITIAL_SETTINGS: AppSettings = {
   telemetryEndpoint: 'https://cvfybrtblxzpawnxqsnd.supabase.co/rest/v1/telemetry_logs',
 };
 
-// 1. Clientes reales: Inicialmente vacío, se puebla al recibir contactos o agendamientos reales
-export const SEED_CLIENTS: Client[] = [];
+// 1. Clientes reales sincronizados con Supabase Cloud
+export const SEED_CLIENTS: Client[] = [
+  {
+    id: 'cli-1794802562643',
+    name: 'ejemplo',
+    company: 'conpi',
+    email: 'contacto@conpi.cl',
+    phone: '+56 9 8765 4321',
+    country: 'Chile',
+    source: 'Monitoreo & Telemetría',
+    createdAt: '2026-11-16T12:00:00Z',
+  },
+];
 
-// 2. Deals / Negocios del CRM: Inicialmente vacío ($0 CLP), se puebla al crear cotizaciones o proyectos reales
-export const SEED_DEALS: CRMDeal[] = [];
+// 2. Deals / Negocios del CRM (Pipeline de Ventas vinculado a Supabase)
+export const SEED_DEALS: CRMDeal[] = [
+  {
+    id: 'deal-conpi-01',
+    clientId: 'cli-1794802562643',
+    clientName: 'CONPI Chile (conpi.cl)',
+    company: 'conpi',
+    email: 'contacto@conpi.cl',
+    phone: '+56 9 8765 4321',
+    title: 'Implementación Web, Auditoría y Telemetría CONPI',
+    valueCLP: 850000,
+    stage: 'en_monitoreo',
+    meetingDate: '2026-11-20',
+    meetLink: 'https://meet.google.com/conpi-lsc',
+    notes: 'Proyecto con telemetría activa en TecnoInver cPanel. Incluye auditoría de carga y gobernanza técnica.',
+    projectId: 'conpi-app',
+    updatedAt: '2026-11-16',
+  },
+  {
+    id: 'deal-propuesta-02',
+    clientId: 'cli-1794802562643',
+    clientName: 'CONPI Chile (conpi.cl)',
+    company: 'conpi',
+    email: 'contacto@conpi.cl',
+    phone: '+56 9 8765 4321',
+    title: 'Optimización SEO y Blindaje de Rendimiento',
+    valueCLP: 450000,
+    stage: 'propuesta_enviada',
+    meetingDate: '2026-11-22',
+    meetLink: 'https://meet.google.com/conpi-seo',
+    notes: 'Propuesta de sprint de performance, Google Core Web Vitals y Search Console.',
+    projectId: 'conpi-app',
+    updatedAt: '2026-11-16',
+  },
+];
 
-// 3. Evaluaciones: Inicialmente vacío
-export const SEED_EVALUATIONS: ProspectEvaluation[] = [];
+// 3. Evaluaciones Estratégicas
+export const SEED_EVALUATIONS: ProspectEvaluation[] = [
+  {
+    id: 'eval-conpi-01',
+    clientId: 'cli-1794802562643',
+    clientName: 'CONPI Chile SpA',
+    company: 'conpi',
+    country: 'Chile',
+    email: 'contacto@conpi.cl',
+    phone: '+56 9 8765 4321',
+    source: 'Auditoría LSC',
+    businessModel: 'b2b_servicios',
+    currentPlatform: 'React + cPanel TecnoInver',
+    estimatedMonthlySalesCLP: 5000000,
+    foda: {
+      fortalezas: ['Dominio consolidado en Chile (.cl)', 'Telemetría LSC activa'],
+      oportunidades: ['Optimización de rastreo Googlebot', 'Integración de CDN'],
+      debilidades: ['Límites de hosting compartido cPanel EP=20'],
+      amenazas: ['Reglas de firewall cPHulk ante intentos fallidos de correo'],
+    },
+    pestel: {
+      politico: 'Normativas de gobierno digital en Chile',
+      economico: 'Contratación en pesos chilenos (CLP)',
+      social: 'Comunidad de usuarios y profesionales',
+      tecnologico: 'Arquitectura SPA React con API REST',
+      ecologico: 'Alojamiento en data centers eficientes',
+      legal: 'Ley 21.459 (Delitos Informáticos) y Ley 19.628 (Datos Personales)',
+    },
+    viabilityDecision: 'go_viable',
+    viabilityRationale: 'Plataforma con tracción activa, viable para planes de soporte y monitoreo mensual.',
+    scoreLevel: 'Prospecto A (Prioritario)',
+    totalEstimatedBudgetCLP: 850000,
+    nicCostCLP: 9990,
+    hostingOption: 'Hosting Compartido TecnoInver',
+    hostingCostCLP: 30000,
+    databaseOption: 'MySQL / Supabase Cloud',
+    databaseCostCLP: 0,
+    architectureType: 'serverless_jamstack',
+    securityTier: 'esencial_cloudflare',
+    createdAt: '2026-11-16T12:00:00Z',
+  },
+];
 
-// 4. Cotizaciones: Inicialmente vacío
-export const SEED_QUOTES: Quote[] = [];
+// 4. Cotizaciones Express
+export const SEED_QUOTES: Quote[] = [
+  {
+    id: 'quote-conpi-01',
+    quoteNumber: 'COT-2026-001',
+    clientId: 'cli-1794802562643',
+    clientName: 'CONPI Chile SpA',
+    clientCompany: 'conpi',
+    clientEmail: 'contacto@conpi.cl',
+    clientPhone: '+56 9 8765 4321',
+    projectTitle: 'Servicio Integral de Auditoría de Carga y Telemetría',
+    subtitle: 'Plan de Pruebas de Estrés, Diagnóstico de Red y Monitoreo Continuo',
+    outcome: 'Disponibilidad del 99.8% y mitigación de cuellos de botella en hosting compartido',
+    services: [
+      { id: 's-load', title: 'Pruebas de Carga y Estrés (k6 / Locust)', description: 'Simulación de 100 usuarios concurrentes', priceCLP: 350000 },
+      { id: 's-sec', title: 'Diagnóstico Preventivo de Seguridad (OWASP ZAP)', description: 'Auditoría de cabeceras e inyecciones', priceCLP: 250000 },
+      { id: 's-mon', title: 'Telemetría en Vivo y Configuración de SDK LSC', description: 'Monitor continuo sendBeacon y alertas', priceCLP: 250000 },
+    ],
+    sprints: [
+      { sprintNumber: 1, title: 'Sprint 1: Auditoría Técnica y Pruebas Nocturnas', durationWeeks: 1, deliverables: ['Informe P95 / RPS'], definitionOfDone: 'Pruebas ejecutadas sin caídas de servicio' },
+      { sprintNumber: 2, title: 'Sprint 2: Optimización y Monitoreo Continuo', durationWeeks: 1, deliverables: ['SDK y Dashboard'], definitionOfDone: 'Telemetría en vivo verificada' },
+    ],
+    totalCLP: 850000,
+    paymentCondition: '50_50',
+    paymentConditionDetails: '50% anticipo al iniciar trabajos y 50% contra entrega conforme del informe técnico final',
+    taxDocument: 'factura',
+    deliveryTimeDays: 14,
+    validityDays: 15,
+    status: 'aprobada',
+    createdAt: '2026-11-16T12:00:00Z',
+  },
+];
 
 // 5. Branding Projects
 export const SEED_BRANDING: BrandingProject = {

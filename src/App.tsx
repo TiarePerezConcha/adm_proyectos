@@ -23,6 +23,12 @@ import { ConfiguracionView } from './components/studio/ConfiguracionView';
 
 import { LoginGuard } from './components/auth/LoginGuard';
 import { ALLOWED_EMAIL, isEmailAuthorized, supabase } from './services/supabaseClient';
+import {
+  fetchInitialDataFromSupabase,
+  syncAllProjectsToSupabase,
+  syncDealToSupabase,
+  syncClientToSupabase,
+} from './services/supabaseSyncService';
 
 export function App() {
   const [state, setState] = useState<AppState>(() => loadAppState());
@@ -39,6 +45,63 @@ export function App() {
     }
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }, [currentEnv, adminTab, studioTab]);
+
+  // Sincronización Automática con Supabase Cloud (Lectura y Respaldo)
+  useEffect(() => {
+    async function initSupabaseData() {
+      try {
+        const remoteData = await fetchInitialDataFromSupabase();
+        if (remoteData) {
+          setState((prev) => {
+            // Unificar Clientes
+            const clientMap = new Map<string, any>(prev.clients.map((c) => [c.id, c]));
+            (remoteData.clients || []).forEach((c: any) => clientMap.set(c.id, { ...(clientMap.get(c.id) || {}), ...c }));
+            const mergedClients = Array.from(clientMap.values());
+
+            // Unificar Deals del Pipeline CRM
+            const dealMap = new Map<string, any>(prev.deals.map((d) => [d.id, d]));
+            (remoteData.deals || []).forEach((d: any) => dealMap.set(d.id, { ...(dealMap.get(d.id) || {}), ...d }));
+            const mergedDeals = Array.from(dealMap.values());
+
+            // Unificar Cotizaciones
+            const quoteMap = new Map<string, any>(prev.quotes.map((q) => [q.id, q]));
+            (remoteData.quotes || []).forEach((q: any) => quoteMap.set(q.id, { ...(quoteMap.get(q.id) || {}), ...q }));
+            const mergedQuotes = Array.from(quoteMap.values());
+
+            // Unificar Proyectos Monitoreados
+            const projMap = new Map<string, any>(prev.monitoredProjects.map((p) => [p.id, p]));
+            (remoteData.projects || []).forEach((p: any) => {
+              if (projMap.has(p.id)) {
+                projMap.set(p.id, { ...projMap.get(p.id), ...p });
+              }
+            });
+            const mergedProjects = Array.from(projMap.values());
+
+            return {
+              ...prev,
+              clients: mergedClients.length > 0 ? mergedClients : prev.clients,
+              deals: mergedDeals.length > 0 ? mergedDeals : prev.deals,
+              quotes: mergedQuotes.length > 0 ? mergedQuotes : prev.quotes,
+              monitoredProjects: mergedProjects,
+            };
+          });
+
+          // Si en Supabase crm_deals está vacío, respaldar los deals del estado local
+          if (!remoteData.deals || remoteData.deals.length === 0) {
+            state.deals.forEach((d) => syncDealToSupabase(d));
+          }
+
+          // Respaldar clientes y proyectos monitoreados
+          state.clients.forEach((c) => syncClientToSupabase(c));
+          syncAllProjectsToSupabase(state.monitoredProjects);
+        }
+      } catch (err) {
+        console.warn('Sincronización inicial Supabase:', err);
+      }
+    }
+
+    initSupabaseData();
+  }, []);
 
   // Estado de Autenticación de 3 Capas
   const [authenticatedUser, setAuthenticatedUser] = useState<string | null>(() => {

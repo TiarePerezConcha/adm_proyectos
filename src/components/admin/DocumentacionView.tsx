@@ -35,6 +35,14 @@ import {
 } from 'lucide-react';
 import { AppState, saveAppState } from '../../utils/storage';
 import { MonitoredProject, ProjectExternalDoc } from '../../types';
+import { supabase } from '../../services/supabaseClient';
+import {
+  syncDocumentationToSupabase,
+  syncLegalRepToSupabase,
+  syncClientToSupabase,
+  syncDealToSupabase,
+  syncMonitoredProjectToSupabase,
+} from '../../services/supabaseSyncService';
 
 interface DocumentacionViewProps {
   state: AppState;
@@ -244,6 +252,87 @@ export const DocumentacionView: React.FC<DocumentacionViewProps> = ({ state, onU
       d.title.toLowerCase() === selectedProj?.name.toLowerCase() ||
       (selectedProj?.clientName && d.clientName.toLowerCase().includes(selectedProj.clientName.toLowerCase()))
   );
+  const matchingQuote = state.quotes?.find(
+    (q) =>
+      q.clientId === selectedProj?.id ||
+      q.clientName.toLowerCase().includes(contractClientName.toLowerCase()) ||
+      (selectedProj?.name && q.projectTitle.toLowerCase().includes(selectedProj.name.toLowerCase()))
+  );
+  const [isSyncingSupabase, setIsSyncingSupabase] = useState(false);
+
+  const handleSyncAllToSupabase = async () => {
+    setIsSyncingSupabase(true);
+    try {
+      if (matchingClient || contractClientName) {
+        await syncClientToSupabase({
+          id: matchingClient?.id || `cli-${selectedProj?.id || Date.now()}`,
+          name: contractClientName,
+          company: contractClientName,
+          email: contractClientEmail,
+          phone: contractClientPhone,
+          country: 'Chile',
+          source: 'Documentación Legal',
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      if (contractClientType === 'empresa' && contractLegalRepName) {
+        await syncLegalRepToSupabase({
+          id: `rep-${selectedProj?.id || 'main'}`,
+          clientId: matchingClient?.id || `cli-${selectedProj?.id || 'main'}`,
+          name: contractLegalRepName,
+          rut: contractLegalRepRUT,
+          email: contractClientEmail,
+          phone: contractClientPhone,
+          position: 'Representante Legal Autorizado',
+        });
+      }
+
+      if (selectedProj) {
+        await syncMonitoredProjectToSupabase(selectedProj);
+      }
+
+      if (selectedProj) {
+        await syncDocumentationToSupabase({
+          id: `doc-${selectedProj.id}-contrato-maestro`,
+          projectId: selectedProj.id,
+          clientId: matchingClient?.id,
+          legalRepId: contractClientType === 'empresa' ? `rep-${selectedProj.id}` : undefined,
+          quoteId: matchingQuote?.id,
+          dealId: matchingDeal?.id,
+          docTitle: 'Contrato Maestro General de Servicios Digitales',
+          docCategory: 'contrato_firmado',
+          documentOwnershipType: currentOwnership,
+          contentText: contratoMaestroConsolidado,
+          totalCLP: contractValueCLP,
+          taxDocument: contractTaxDoc,
+          isSigned: false,
+        });
+
+        await syncDocumentationToSupabase({
+          id: `doc-${selectedProj.id}-anexo-1`,
+          projectId: selectedProj.id,
+          clientId: matchingClient?.id,
+          quoteId: matchingQuote?.id,
+          dealId: matchingDeal?.id,
+          docTitle: 'Anexo 1: Autorización Expresa de Pruebas de Carga y Seguridad',
+          docCategory: 'anexo_autorizacion',
+          documentOwnershipType: currentOwnership,
+          contentText: anexo1Individual,
+          totalCLP: contractValueCLP,
+          taxDocument: contractTaxDoc,
+          isSigned: false,
+        });
+      }
+
+      showCopiedAlert('✓ Vinculación relacional y respaldo en Supabase Cloud completado');
+    } catch (e) {
+      console.warn('Error al respaldar en Supabase:', e);
+      showCopiedAlert('Advertencia: Revisa la conexión con Supabase');
+    } finally {
+      setIsSyncingSupabase(false);
+    }
+  };
   const [contractValueCLP, setContractValueCLP] = useState<number>(
     selectedProj?.clientBilling?.totalQuoteCLP || matchingDeal?.valueCLP || 450000
   );
@@ -686,6 +775,18 @@ export const DocumentacionView: React.FC<DocumentacionViewProps> = ({ state, onU
       onUpdateState(newState);
     }
 
+    // Respaldar también en Supabase Cloud
+    syncDocumentationToSupabase({
+      id: newDoc.id,
+      projectId: selectedProj.id,
+      clientId: matchingClient?.id,
+      docTitle: newDoc.title,
+      docCategory: newDoc.category,
+      fileName: newDoc.fileName,
+      fileSize: newDoc.fileSize,
+      notes: newDoc.notes,
+    });
+
     // Limpiar formulario
     setNewDocTitle('');
     setNewDocNotes('');
@@ -710,6 +811,7 @@ export const DocumentacionView: React.FC<DocumentacionViewProps> = ({ state, onU
     if (onUpdateState) {
       onUpdateState(newState);
     }
+    supabase.from('project_documentation').delete().eq('id', docId).then(() => {});
     showCopiedAlert('Documento eliminado.');
   };
 
@@ -1524,6 +1626,36 @@ Se ejecutó una prueba de carga progresiva y estrés sobre el entorno en producc
             </div>
           </div>
         )}
+
+        {/* Conexión Relacional en Vivo con Studio, CRM & Supabase Cloud */}
+        <div className="bg-[#0A0C10] border border-[#202634] p-3 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-[11px] pt-3">
+          <div className="space-y-1">
+            <span className="text-slate-400 font-bold block text-[10px] uppercase tracking-wider">
+              🔗 Conexión Relacional en Base de Datos (Supabase Cloud):
+            </span>
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="bg-sky-500/10 text-sky-300 border border-sky-500/30 px-2 py-0.5 rounded-md font-mono">
+                Deal CRM: {matchingDeal ? `${matchingDeal.title} (${matchingDeal.stage})` : 'Sin deal vinculado'}
+              </span>
+              <span className="bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-md font-mono">
+                Cotización Studio: {matchingQuote ? `${matchingQuote.quoteNumber} ($${matchingQuote.totalCLP.toLocaleString('es-CL')} CLP)` : `$${contractValueCLP.toLocaleString('es-CL')} CLP (${contractTaxDoc.toUpperCase()})`}
+              </span>
+              <span className="bg-purple-500/10 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-md font-mono">
+                Mandante: {dispClientName} {contractClientType === 'empresa' ? `(Rep: ${dispLegalRepName})` : ''}
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            disabled={isSyncingSupabase}
+            onClick={handleSyncAllToSupabase}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition shadow cursor-pointer disabled:opacity-50 shrink-0"
+          >
+            <Server className="w-3.5 h-3.5" />
+            <span>{isSyncingSupabase ? 'Sincronizando...' : 'Respaldar y Vincular en Supabase Cloud'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Navegación por Pestañas: 6 Anexos Individuales + Checklists + Contrato Maestro + Otros Documentos */}
