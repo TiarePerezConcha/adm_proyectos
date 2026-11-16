@@ -12,11 +12,15 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 });
 
 export const ALLOWED_EMAIL = 'tiare.perezconcha@gmail.com';
-export const DEFAULT_ALLOWED_EMAILS = ['tiare.perezconcha@gmail.com'];
+export const DEFAULT_ALLOWED_EMAILS = [
+  'tiare.perezconcha@gmail.com',
+  'tiare.carrera.2014@gmail.com',
+  'tia.perez@duocuc.cl'
+];
 
 /**
  * Obtiene la lista completa de correos autorizados (Whitelist).
- * Siempre asegura que el correo del propietario principal esté incluido.
+ * Siempre asegura que todos los correos predeterminados estén incluidos.
  */
 export function getAuthorizedEmails(): string[] {
   try {

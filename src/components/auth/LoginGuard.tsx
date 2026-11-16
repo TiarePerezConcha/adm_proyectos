@@ -12,11 +12,14 @@ import {
   CheckCircle2,
   X,
   RotateCcw,
-  Users
+  Users,
+  ExternalLink,
+  HelpCircle
 } from 'lucide-react';
 import {
   supabase,
   ALLOWED_EMAIL,
+  DEFAULT_ALLOWED_EMAILS,
   getAuthorizedEmails,
   isEmailAuthorized,
   sanitizeInput
@@ -28,7 +31,8 @@ interface LoginGuardProps {
 }
 
 export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
-  const [email, setEmail] = useState('');
+  const [authorizedEmailsList, setAuthorizedEmailsList] = useState<string[]>(() => getAuthorizedEmails());
+  const [email, setEmail] = useState(() => authorizedEmailsList[0] || 'tiare.perezconcha@gmail.com');
   const [credentialInput, setCredentialInput] = useState(''); // PIN o Contraseña
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [supabaseAnonKey, setSupabaseAnonKey] = useState(
@@ -42,7 +46,8 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
   // Estado del botón ojo para ver / ocultar contraseña
   const [showPassword, setShowPassword] = useState(false);
 
-  // Estados de inicio de sesión con Google (OAuth)
+  // Estados de modal de selección de cuenta Google
+  const [showGoogleModal, setShowGoogleModal] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   // Estados del modal de recuperación de contraseña
@@ -50,10 +55,6 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [recoveryMsg, setRecoveryMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isRecovering, setIsRecovering] = useState(false);
-
-  // Estado para ver la lista de correos autorizados
-  const [showAuthListModal, setShowAuthListModal] = useState(false);
-  const [authorizedEmailsList, setAuthorizedEmailsList] = useState<string[]>(() => getAuthorizedEmails());
 
   // Estado de 2FA configurado en localStorage
   const is2FAEnabled = localStorage.getItem('lsc_2fa_enabled') === 'true';
@@ -73,7 +74,7 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
             completeLogin(oauthEmail);
           } else {
             await supabase.auth.signOut();
-            setErrorMsg(`⛔ Acceso Denegado: La cuenta Google "${oauthEmail}" no figura en la lista de correos autorizados por LSC Management.`);
+            setErrorMsg(`⛔ Acceso Denegado: La cuenta Google "${oauthEmail}" no figura en la lista de correos autorizados.`);
           }
         }
       } catch (err) {
@@ -90,7 +91,7 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
           completeLogin(oauthEmail);
         } else {
           await supabase.auth.signOut();
-          setErrorMsg(`⛔ Acceso Denegado: La cuenta Google "${oauthEmail}" no figura en la lista de correos autorizados por LSC Management.`);
+          setErrorMsg(`⛔ Acceso Denegado: La cuenta Google "${oauthEmail}" no figura en la lista de correos autorizados.`);
         }
       }
     });
@@ -101,16 +102,17 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
     };
   }, []);
 
-  // Actualizar lista de correos autorizados al abrir modal
-  const refreshAuthorizedList = () => {
-    setAuthorizedEmailsList(getAuthorizedEmails());
+  // Seleccionar cuenta Google autorizada directamente
+  const handleSelectGoogleAccount = (selectedEmail: string) => {
+    setEmail(selectedEmail);
+    setShowGoogleModal(false);
+    setErrorMsg('');
   };
 
-  // Inicio de sesión externo con Google (OAuth)
-  const handleGoogleSignIn = async () => {
+  // Lanzar OAuth real si el usuario lo solicita
+  const handleDirectSupabaseOAuth = async () => {
     setErrorMsg('');
     setIsGoogleLoading(true);
-
     try {
       const redirectUrl = window.location.origin + window.location.pathname;
       const { error } = await supabase.auth.signInWithOAuth({
@@ -126,7 +128,7 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
 
       if (error) {
         setErrorMsg(
-          `Google OAuth: ${error.message}. Si el proveedor Google aún no está configurado en Supabase Cloud, puedes ingresar usando tu correo autorizado con PIN o contraseña.`
+          `Google OAuth: ${error.message}. Verifica que el proveedor Google esté habilitado en Supabase Cloud.`
         );
       }
     } catch (err: any) {
@@ -206,7 +208,7 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
     // 1. Validar código dinámico TOTP
     const isTotpValid = await verifyTOTPCode(totpSecret, clean2FA);
     if (isTotpValid) {
-      completeLogin(email || ALLOWED_EMAIL, supabaseAnonKey);
+      completeLogin(email, supabaseAnonKey);
       return;
     }
 
@@ -214,7 +216,7 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
     if (backupCodes.includes(clean2FA)) {
       const newBackups = backupCodes.filter((c) => c !== clean2FA);
       localStorage.setItem('lsc_2fa_backups', JSON.stringify(newBackups));
-      completeLogin(email || ALLOWED_EMAIL, supabaseAnonKey);
+      completeLogin(email, supabaseAnonKey);
       return;
     }
 
@@ -307,7 +309,7 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
         <div className="grid grid-cols-3 gap-2 mb-6 text-center">
           <div className="p-2 bg-gray-900/80 border border-gray-800 rounded-lg">
             <span className="text-[10px] font-mono block text-emerald-400">CORREO</span>
-            <span className="text-[10px] text-gray-300">Lista Autorizada</span>
+            <span className="text-[10px] text-gray-300">3 Autorizados</span>
           </div>
           <div className="p-2 bg-gray-900/80 border border-gray-800 rounded-lg">
             <span className="text-[10px] font-mono block text-amber-400">CLAVE / PIN</span>
@@ -338,33 +340,29 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
             {/* Botón de Acceso Externo con Google */}
             <button
               type="button"
-              onClick={handleGoogleSignIn}
-              disabled={isLocked || isGoogleLoading}
-              className="w-full py-2.5 px-4 bg-[#161B22] hover:bg-[#1C2128] border border-gray-700 hover:border-gray-500 active:scale-[0.99] text-white font-medium text-xs rounded-xl transition flex items-center justify-center gap-2.5 shadow-sm cursor-pointer disabled:opacity-50"
+              onClick={() => setShowGoogleModal(true)}
+              disabled={isLocked}
+              className="w-full py-2.5 px-4 bg-[#161B22] hover:bg-[#1C2128] border border-gray-700 hover:border-gray-500 active:scale-[0.99] text-white font-medium text-xs rounded-xl transition flex items-center justify-center gap-2.5 shadow-sm cursor-pointer"
             >
-              {isGoogleLoading ? (
-                <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-              ) : (
-                <svg className="w-4 h-4" viewBox="0 0 24 24">
-                  <path
-                    fill="#4285F4"
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                  />
-                  <path
-                    fill="#EA4335"
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                  />
-                </svg>
-              )}
-              <span>{isGoogleLoading ? 'Conectando con Google...' : 'Continuar con Google (OAuth)'}</span>
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+              <span>Continuar con Google</span>
             </button>
 
             <div className="flex items-center gap-3 my-2">
@@ -379,20 +377,9 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
               <div>
                 <label className="block text-xs font-semibold text-gray-300 mb-1.5 flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-rose-400" /> Correo Gmail Propietario / Autorizado
+                    <Mail className="w-3.5 h-3.5 text-rose-400" /> Correo Autorizado
                   </span>
-                  {authorizedEmailsList.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        refreshAuthorizedList();
-                        setShowAuthListModal(true);
-                      }}
-                      className="text-[10px] text-emerald-400 hover:text-emerald-300 underline font-mono cursor-pointer"
-                    >
-                      {authorizedEmailsList.length} correos autorizados
-                    </button>
-                  )}
+                  <span className="text-[10px] font-mono text-emerald-400">Selecciona o escribe:</span>
                 </label>
                 <input
                   type="email"
@@ -403,11 +390,31 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
                   disabled={isLocked}
                   className="w-full bg-[#161B22] border border-gray-700 focus:border-rose-500 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none transition-colors"
                 />
-                <span className="text-[11px] text-gray-500 mt-1 block">
-                  Cuentas con acceso:{' '}
-                  <strong className="text-gray-300">{authorizedEmailsList[0]}</strong>
-                  {authorizedEmailsList.length > 1 && ` y ${authorizedEmailsList.length - 1} más`}
-                </span>
+
+                {/* Chips de Selección Rápida para los 3 Correos Autorizados */}
+                <div className="flex flex-col gap-1.5 mt-2">
+                  <span className="text-[10px] text-gray-400 font-mono">Cuentas autorizadas:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {authorizedEmailsList.map((em, idx) => {
+                      const isSelected = email.toLowerCase() === em.toLowerCase();
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setEmail(em)}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-mono border transition-all cursor-pointer flex items-center gap-1.5 ${
+                            isSelected
+                              ? 'bg-rose-950/80 text-rose-300 border-rose-600 font-bold shadow-sm'
+                              : 'bg-[#161B22] text-gray-400 border-gray-800 hover:border-gray-600 hover:text-white'
+                          }`}
+                        >
+                          {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />}
+                          <span>{em}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -522,7 +529,104 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
         </div>
       </div>
 
-      {/* MODAL 1: RECUPERACIÓN DE CONTRASEÑA Y PIN MAESTRO */}
+      {/* MODAL 1: SELECTOR DE CUENTA GOOGLE AUTORIZADA */}
+      {showGoogleModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0E1218] border border-gray-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative space-y-4">
+            <button
+              onClick={() => setShowGoogleModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white p-1 rounded-lg cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 border-b border-gray-800 pb-3">
+              <div className="w-10 h-10 rounded-xl bg-gray-900 border border-gray-700 flex items-center justify-center shadow-inner">
+                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Iniciar Sesión con Google</h3>
+                <p className="text-xs text-gray-400">Selecciona tu cuenta Google autorizada</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-300">
+              Selecciona una de tus cuentas registradas para completar tu acceso seguro con tu PIN o contraseña:
+            </p>
+
+            {/* Lista de cuentas Google autorizadas */}
+            <div className="space-y-2">
+              {authorizedEmailsList.map((em, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleSelectGoogleAccount(em)}
+                  className="w-full p-3 bg-[#161B22] hover:bg-[#1C2128] border border-gray-700 hover:border-rose-500/60 rounded-xl text-left transition flex items-center justify-between group cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-rose-500 to-amber-500 text-white font-bold flex items-center justify-center text-xs">
+                      {em.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div className="text-xs font-medium text-white group-hover:text-rose-300 transition-colors">
+                        {em}
+                      </div>
+                      <div className="text-[10px] text-gray-500">
+                        {em === 'tiare.perezconcha@gmail.com'
+                          ? 'Cuenta Propietaria Principal'
+                          : em.includes('duocuc')
+                          ? 'Cuenta Institucional Duoc UC'
+                          : 'Cuenta Gmail Autorizada'}
+                      </div>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-gray-500 group-hover:text-rose-400 group-hover:translate-x-0.5 transition-all" />
+                </button>
+              ))}
+            </div>
+
+            {/* Aviso sobre la activación en Supabase */}
+            <div className="p-3 bg-gray-900 border border-gray-800 rounded-xl space-y-2 text-[11px] text-gray-400 font-mono">
+              <div className="flex items-center gap-1.5 text-gray-300 font-semibold">
+                <HelpCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>¿Por qué Supabase muestra "provider is not enabled"?</span>
+              </div>
+              <p className="text-[10px] leading-relaxed text-gray-400">
+                Para el redireccionamiento OAuth directo sin PIN, Google requiere que actives el interruptor en:{' '}
+                <strong className="text-gray-300">Supabase Cloud &gt; Authentication &gt; Providers &gt; Google</strong>{' '}
+                pegando tu Client ID de Google Cloud. Mientras tanto, puedes ingresar seleccionando tu cuenta arriba.
+              </p>
+              <button
+                type="button"
+                onClick={handleDirectSupabaseOAuth}
+                disabled={isGoogleLoading}
+                className="w-full py-1.5 mt-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-[10px] transition text-center cursor-pointer"
+              >
+                {isGoogleLoading ? 'Redirigiendo...' : 'Probar redirección OAuth de Supabase'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: RECUPERACIÓN DE CONTRASEÑA Y PIN MAESTRO */}
       {showRecoveryModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#0E1218] border border-gray-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative space-y-4">
@@ -573,9 +677,19 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
                   onChange={(e) => setRecoveryEmail(e.target.value)}
                   className="w-full bg-[#161B22] border border-gray-700 focus:border-rose-500 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none"
                 />
-                <span className="text-[10px] text-gray-500 mt-1 block">
-                  El sistema validará que este correo esté registrado en la lista de correos autorizados.
-                </span>
+
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {authorizedEmailsList.map((em, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setRecoveryEmail(em)}
+                      className="px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-[10px] text-gray-300 font-mono transition cursor-pointer"
+                    >
+                      {em}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="p-3 bg-amber-950/20 border border-amber-800/40 rounded-xl space-y-1">
@@ -606,55 +720,6 @@ export const LoginGuard: React.FC<LoginGuardProps> = ({ onLoginSuccess }) => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 2: LISTA DE CORREOS AUTORIZADOS */}
-      {showAuthListModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0E1218] border border-gray-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl relative space-y-4">
-            <button
-              onClick={() => setShowAuthListModal(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-white p-1 rounded-lg cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-2 border-b border-gray-800 pb-3">
-              <Users className="w-5 h-5 text-emerald-400" />
-              <div>
-                <h3 className="text-sm font-bold text-white">Cuentas Autorizadas (Whitelist)</h3>
-                <p className="text-[10px] text-gray-400">Correos con permiso de acceso concedido</p>
-              </div>
-            </div>
-
-            <div className="space-y-2 max-h-60 overflow-y-auto">
-              {authorizedEmailsList.map((em, idx) => (
-                <div
-                  key={idx}
-                  className="p-2.5 bg-[#161B22] border border-gray-800 rounded-lg flex items-center justify-between text-xs text-white"
-                >
-                  <span className="truncate">{em}</span>
-                  {em.toLowerCase() === ALLOWED_EMAIL.toLowerCase() && (
-                    <span className="text-[9px] bg-rose-950 text-rose-300 border border-rose-800/50 px-2 py-0.5 rounded font-mono font-bold">
-                      Propietario
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <p className="text-[10px] text-gray-500 leading-relaxed font-mono">
-              💡 Puedes agregar o modificar correos autorizados adicionales desde la sección <strong>Studio &gt; Configuración &gt; Seguridad</strong> una vez que inicies sesión.
-            </p>
-
-            <button
-              onClick={() => setShowAuthListModal(false)}
-              className="w-full py-2 bg-gray-800 hover:bg-gray-700 text-white text-xs font-semibold rounded-xl transition cursor-pointer"
-            >
-              Entendido
-            </button>
           </div>
         </div>
       )}
