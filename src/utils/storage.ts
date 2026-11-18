@@ -62,7 +62,7 @@ export function loadAppState(): AppState {
       const rawDeals = (parsed.deals && parsed.deals.length > 0) ? parsed.deals : SEED_DEALS;
       const cleanDeals = rawDeals;
 
-      // Limpiar y unificar proyectos monitoreados (filtrar pruebas y asegurar enriquecimiento)
+      // Limpiar y unificar proyectos monitoreados (filtrar pruebas, tratos comerciales y rutas locales)
       const rawProjects = parsed.monitoredProjects && parsed.monitoredProjects.length > 0 
         ? parsed.monitoredProjects 
         : SEED_MONITORED_PROJECTS;
@@ -73,6 +73,15 @@ export function loadAppState(): AppState {
         .filter((p: any) => {
           const id = (p.id || '').toLowerCase();
           const name = (p.name || '').toLowerCase();
+          const url = (p.url || '').toLowerCase();
+
+          // 1. Filtrar tratos comerciales del CRM que se mezclaron con proyectos web
+          if (id.startsWith('studio-') || id.startsWith('deal-')) return false;
+
+          // 2. Filtrar rutas locales de archivos del sistema y endpoints internos de Supabase
+          if (url.startsWith('file:') || url.includes('supabase.co')) return false;
+
+          // 3. Filtrar proyectos de prueba y manuales
           if (id === 'test-keepalive-verify' || name.includes('test keepalive')) return false;
           if (id === 'studio-keepalive-manual' || name.includes('studio keepalive')) return false;
           if (id === 'conpi-react' || id === 'conpi-web' || name === 'conpi react' || name === 'conpi web') return false;

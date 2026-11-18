@@ -867,99 +867,29 @@ class ConpiUser(HttpUser):
         return proj;
       });
 
-      // Limpiar proyectos de pruebas
-      const cleanedUpdatedList = updatedList.filter(
-        (p) =>
-          p.id !== 'conpi-react' &&
-          p.id !== 'conpi-web' &&
-          p.id !== 'test-keepalive-verify' &&
-          p.id !== 'studio-keepalive-manual' &&
-          p.name !== 'Conpi React' &&
-          p.name !== 'Conpi Web' &&
-          p.name !== 'Studio Keepalive Manual' &&
-          !p.name.includes('Test Keepalive') &&
-          !p.name.includes('Studio Keepalive')
-      );
+      // Limpiar proyectos de pruebas, tratos comerciales y rutas de depuración
+      const cleanedUpdatedList = updatedList.filter((p) => {
+        const id = (p.id || '').toLowerCase();
+        const name = (p.name || '').toLowerCase();
+        const url = (p.url || '').toLowerCase();
 
-      // Auto-descubrimiento de nuevos proyectos que envían pings vía SDK JS v2.1
-      const discoveredFromLogs: MonitoredProject[] = [];
-      for (const [logPid, logData] of latestLogs.entries()) {
-        if (!matchedPids.has(logPid)) {
-          const isIgnored = logPid.includes('test') || logPid.includes('manual');
-          if (!isIgnored) {
-            let hostTitle = logPid;
-            try {
-              if (logData.url && logData.url !== 'invalid-url') {
-                hostTitle = new URL(logData.url).hostname;
-              }
-            } catch {}
-            discoveredFromLogs.push({
-              id: logPid,
-              name: hostTitle,
-              clientName: 'Detectado via SDK Telemetría',
-              url: logData.url || '',
-              status: 'online',
-              uptimePercentage: 100.0,
-              avgResponseTimeMs: logData.load_time_ms || 240,
-              sslValid: Boolean(logData.ssl_valid),
-              sslExpiresDays: 365,
-              lastHeartbeat: formatRelativeTime(logData.timestamp),
-              supabaseKeepAliveEnabled: false,
-              lastSupabasePing: `Supabase Live: ${new Date(logData.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (OK)`,
-              recentErrors: [],
-              stack: ['SDK JS v2.1', 'Web'],
-              projectOwnershipType: 'propio',
-            });
-            matchedPids.add(logPid);
-          }
-        }
-      }
+        // No incluir deals comerciales en el monitor de servidores
+        if (id.startsWith('studio-') || id.startsWith('deal-')) return false;
 
-      // Auto-descubrimiento de proyectos creados desde Studio (Cotizador / CRM Deals)
-      const discoveredFromDeals: MonitoredProject[] = [];
-      if (state.deals && Array.isArray(state.deals)) {
-        for (const deal of state.deals) {
-          const dealTitle = (deal.title || '').trim();
-          const dealClient = (deal.clientName || deal.company || '').trim();
-          if (dealTitle) {
-            const alreadyExists = cleanedUpdatedList.some(
-              (p) => p.name.toLowerCase() === dealTitle.toLowerCase() || p.id.toLowerCase() === deal.id.toLowerCase()
-            );
-            if (!alreadyExists) {
-              discoveredFromDeals.push({
-                id: `studio-${deal.id}`,
-                name: dealTitle,
-                clientName: dealClient || 'Cliente Studio',
-                url: '',
-                status: 'online',
-                uptimePercentage: 100.0,
-                avgResponseTimeMs: 250,
-                sslValid: true,
-                sslExpiresDays: 365,
-                lastHeartbeat: 'En proceso desde Studio',
-                supabaseKeepAliveEnabled: false,
-                recentErrors: [],
-                stack: ['Studio', 'Cotización'],
-                projectOwnershipType: 'cliente',
-                clientBilling: {
-                  clientName: dealClient,
-                  totalQuoteCLP: deal.valueCLP || 0,
-                  paidCLP: 0,
-                  pendingCLP: deal.valueCLP || 0,
-                  taxDocument: 'factura',
-                  status: 'pago_pendiente',
-                },
-              });
-            }
-          }
-        }
-      }
+        // No incluir archivos locales ni el backend de Supabase como sitio monitoreado
+        if (url.startsWith('file:') || url.includes('supabase.co')) return false;
 
-      const allMerged = [...cleanedUpdatedList, ...discoveredFromLogs, ...discoveredFromDeals];
+        if (p.id === 'conpi-react' || p.id === 'conpi-web') return false;
+        if (p.id === 'test-keepalive-verify' || p.id === 'studio-keepalive-manual') return false;
+        if (name === 'conpi react' || name === 'conpi web') return false;
+        if (name.includes('test keepalive') || name.includes('studio keepalive')) return false;
 
-      // Asegurar que conpi-app sea el primer elemento
-      let conpiProj = allMerged.find((p) => p.id === 'conpi-app' || (p.url && p.url.includes('conpi.cl')));
-      const otherList = allMerged.filter((p) => p.id !== 'conpi-app' && !(p.url && p.url.includes('conpi.cl')));
+        return true;
+      });
+
+      // Asegurar que conpi-app sea el primer elemento oficial
+      let conpiProj = cleanedUpdatedList.find((p) => p.id === 'conpi-app' || (p.url && p.url.includes('conpi.cl')));
+      const otherList = cleanedUpdatedList.filter((p) => p.id !== 'conpi-app' && !(p.url && p.url.includes('conpi.cl')));
       const finalProjects = conpiProj ? [conpiProj, ...otherList] : otherList;
 
       const newState = { ...state, monitoredProjects: finalProjects };

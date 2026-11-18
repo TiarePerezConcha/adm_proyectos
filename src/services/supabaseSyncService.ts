@@ -268,6 +268,17 @@ export async function syncDealToSupabase(deal: CRMDeal) {
 
 export async function syncMonitoredProjectToSupabase(project: MonitoredProject) {
   try {
+    // Protocolo estándar de diseño y validación de arquitectura:
+    // NUNCA persistir deals comerciales, rutas locales file:// o URLs de backend en monitored_projects
+    const pid = (project.id || '').toLowerCase();
+    const purl = (project.url || '').toLowerCase();
+    if (pid.startsWith('studio-') || pid.startsWith('deal-')) {
+      return;
+    }
+    if (purl.startsWith('file:') || purl.includes('supabase.co') || !project.url) {
+      return;
+    }
+
     const { error } = await supabase.from('monitored_projects').upsert({
       id: project.id,
       name: project.name,

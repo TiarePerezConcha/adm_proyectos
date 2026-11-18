@@ -68,14 +68,24 @@ export function App() {
             (remoteData.quotes || []).forEach((q: any) => quoteMap.set(q.id, { ...(quoteMap.get(q.id) || {}), ...q }));
             const mergedQuotes = Array.from(quoteMap.values());
 
-            // Unificar Proyectos Monitoreados
+            // Unificar Proyectos Monitoreados (Filtrando tratos y endpoints)
             const projMap = new Map<string, any>(prev.monitoredProjects.map((p) => [p.id, p]));
             (remoteData.projects || []).forEach((p: any) => {
+              const pid = (p.id || '').toLowerCase();
+              const purl = (p.url || '').toLowerCase();
+              if (pid.startsWith('studio-') || pid.startsWith('deal-')) return;
+              if (purl.startsWith('file:') || purl.includes('supabase.co')) return;
               if (projMap.has(p.id)) {
                 projMap.set(p.id, { ...projMap.get(p.id), ...p });
               }
             });
-            const mergedProjects = Array.from(projMap.values());
+            const mergedProjects = Array.from(projMap.values()).filter((p: any) => {
+              const pid = (p.id || '').toLowerCase();
+              const purl = (p.url || '').toLowerCase();
+              if (pid.startsWith('studio-') || pid.startsWith('deal-')) return false;
+              if (purl.startsWith('file:') || purl.includes('supabase.co')) return false;
+              return true;
+            });
 
             return {
               ...prev,
