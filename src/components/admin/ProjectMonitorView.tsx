@@ -43,8 +43,9 @@ import {
   BarChart3,
   HelpCircle,
   Info,
+  Trash2,
 } from 'lucide-react';
-import { AppState, saveAppState } from '../../utils/storage';
+import { AppState, saveAppState, clearAppState } from '../../utils/storage';
 import { MonitoredProject, IncidentComment } from '../../types';
 import { supabase } from '../../services/supabaseClient';
 import { syncMonitoredProjectToSupabase } from '../../services/supabaseSyncService';
@@ -2326,9 +2327,23 @@ class ConpiUser(HttpUser):
             <span>{isSyncingTelemetry ? 'Sincronizando...' : 'Sincronizar Cloud'}</span>
           </button>
 
-          <div className="flex items-center gap-1.5 px-3 py-2 bg-[#12151C] border border-emerald-500/30 text-emerald-400 rounded-lg text-xs font-mono" title="Los proyectos se registran y descubren automáticamente vía SDK JS v2.1 y Studio">
+          <button
+            onClick={() => {
+              if (window.confirm('¿Deseas purgar la caché local (LocalStorage) y recargar desde la BBDD?')) {
+                clearAppState();
+                window.location.reload();
+              }
+            }}
+            className="flex items-center gap-2 px-3 py-2 bg-[#181116] border border-red-500/30 hover:border-red-500/60 rounded-lg text-xs font-mono text-red-300 transition-colors cursor-pointer"
+            title="Elimina datos locales obsoletos y recarga la aplicación leyendo la base de datos limpia"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-red-400" />
+            <span>Purgar Caché Local</span>
+          </button>
+
+          <div className="flex items-center gap-1.5 px-3 py-2 bg-[#12151C] border border-emerald-500/30 text-emerald-400 rounded-lg text-xs font-mono" title="SDK JS v2.1 configurado para monitorear proyectos legítimos registrados">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-[11px] font-semibold">Auto-Descubrimiento Activo</span>
+            <span className="text-[11px] font-semibold">SDK JS v2.1 Blindado</span>
           </div>
         </div>
       </div>

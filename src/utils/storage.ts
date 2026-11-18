@@ -212,6 +212,18 @@ export function saveAppState(state: AppState): void {
   }
 }
 
+/**
+ * Purga completa del almacenamiento local (LocalStorage)
+ * Permite restablecer el estado del navegador a cero y sincronizar limpio desde la BBDD.
+ */
+export function clearAppState(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (e) {
+    console.error('Error al limpiar LocalStorage:', e);
+  }
+}
+
 export function exportAppStateToJSON(state: AppState): void {
   const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(state, null, 2));
   const downloadAnchor = document.createElement('a');

@@ -21,8 +21,9 @@ import {
   ExternalLink,
   Check,
   X,
+  Trash2,
 } from 'lucide-react';
-import { AppState } from '../../utils/storage';
+import { AppState, clearAppState } from '../../utils/storage';
 import { supabase } from '../../services/supabaseClient';
 import { getAIUsageMetrics } from '../../services/aiService';
 
@@ -456,14 +457,30 @@ export const MetricasView: React.FC<MetricasViewProps> = ({ state }) => {
           </p>
         </div>
 
-        <button
-          onClick={fetchRealServerMetrics}
-          disabled={isSyncing}
-          className="flex items-center gap-2 px-3.5 py-1.5 bg-[#161B24] border border-[#232A3B] hover:border-emerald-500/50 rounded-lg text-xs font-mono text-slate-300 transition-colors self-start cursor-pointer"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isSyncing ? 'animate-spin' : ''}`} />
-          <span>{isSyncing ? 'Consultando Supabase...' : 'Sincronizar APIs'}</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start">
+          <button
+            onClick={fetchRealServerMetrics}
+            disabled={isSyncing}
+            className="flex items-center gap-2 px-3.5 py-1.5 bg-[#161B24] border border-[#232A3B] hover:border-emerald-500/50 rounded-lg text-xs font-mono text-slate-300 transition-colors cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>{isSyncing ? 'Consultando Supabase...' : 'Sincronizar APIs'}</span>
+          </button>
+
+          <button
+            onClick={() => {
+              if (window.confirm('¿Deseas purgar la caché local (LocalStorage) y recargar desde la BBDD?')) {
+                clearAppState();
+                window.location.reload();
+              }
+            }}
+            className="flex items-center gap-2 px-3 py-1.5 bg-[#181116] border border-red-500/30 hover:border-red-500/60 rounded-lg text-xs font-mono text-red-300 transition-colors cursor-pointer"
+            title="Elimina datos locales obsoletos y recarga la aplicación leyendo la base de datos limpia"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-red-400" />
+            <span>Purgar Caché Local</span>
+          </button>
+        </div>
       </div>
 
       {/* KPI Top Cards */}
